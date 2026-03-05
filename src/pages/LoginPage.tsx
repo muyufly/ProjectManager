@@ -43,7 +43,7 @@ export const LoginPage: React.FC = () => {
                     <div className="w-12 h-12 bg-blue-500 rounded-xl flex items-center justify-center mx-auto mb-4">
                         <span className="text-white font-bold text-2xl">S</span>
                     </div>
-                    <h1 className="text-2xl font-bold text-slate-800">欢迎回到 Student Online</h1>
+                    <h1 className="text-2xl font-bold text-slate-800">欢迎回到 学生在线</h1>
                     <p className="text-slate-500 mt-2">使用用户名或邮箱登录</p>
                 </div>
 

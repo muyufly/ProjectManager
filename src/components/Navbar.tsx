@@ -1,5 +1,5 @@
 import { NavLink, useNavigate } from 'react-router-dom';
-import { Menu, LogOut, Bell, Check } from 'lucide-react';
+import { LogOut, Bell, Check } from 'lucide-react';
 import type { AppState, Notification } from '../types';
 import { AppContext } from '../constants';
 import { useContext, useState } from 'react';
@@ -47,16 +47,15 @@ export const Navbar: React.FC<NavbarProps> = ({ currentUser }) => {
   return (
     <nav className="bg-white border-b border-slate-200 h-16 px-6 flex items-center justify-between sticky top-0 z-50">
       <div className="flex items-center gap-8">
-        <button className="p-2 hover:bg-slate-100 rounded-lg">
-          <Menu size={24} className="text-slate-600" />
-        </button>
-
         <div className="flex items-center gap-2">
           <NavLink to="/" className={linkClass}>
             首页
           </NavLink>
           <NavLink to="/tasks" className={linkClass}>
             任务
+          </NavLink>
+          <NavLink to="/project-team" className={linkClass}>
+            项目团队
           </NavLink>
           <NavLink to="/profile" className={linkClass}>
             个人中心

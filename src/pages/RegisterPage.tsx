@@ -47,7 +47,7 @@ export const RegisterPage: React.FC = () => {
                     <div className="w-12 h-12 bg-blue-500 rounded-xl flex items-center justify-center mx-auto mb-4">
                         <span className="text-white font-bold text-2xl">S</span>
                     </div>
-                    <h1 className="text-2xl font-bold text-slate-800">创建 Student Online 账号</h1>
+                    <h1 className="text-2xl font-bold text-slate-800">创建 学生在线 账号</h1>
                     <p className="text-slate-500 mt-2">开始你的项目协作之旅</p>
                 </div>
 

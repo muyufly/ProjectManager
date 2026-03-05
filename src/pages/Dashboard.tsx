@@ -93,7 +93,7 @@ export const Dashboard: React.FC = () => {
 
                     <div className="relative z-10 max-w-2xl">
                         <h1 className="text-4xl md:text-5xl font-black mb-4 leading-tight">欢迎回来, {state.currentUser?.name}!</h1>
-                        <p className="text-blue-100 text-lg mb-8 opacity-90">在这里管理您的 Student Online 项目，追踪任务进度，并与您的团队成员展开高效协作。</p>
+                        <p className="text-blue-100 text-lg mb-8 opacity-90">在这里管理您的 学生在线 项目，追踪任务进度，并与您的团队成员展开高效协作。</p>
                         <div className="flex flex-wrap gap-4">
                             <button
                                 onClick={() => setIsProjectModalOpen(true)}

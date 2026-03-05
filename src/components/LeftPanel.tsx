@@ -1,5 +1,5 @@
 import React, { useContext } from 'react';
-import { ChevronRight } from 'lucide-react';
+import { ChevronRight, LayoutGrid } from 'lucide-react';
 import { AppContext } from '../constants';
 import type { Project } from '../types';
 import { useNavigate, useLocation } from 'react-router-dom';
@@ -53,6 +53,22 @@ export const LeftPanel: React.FC<LeftPanelProps> = ({ showStats = false }) => {
 
   const myProjects = projects;
 
+  const completedCount = projects.filter(p => p.status === 'Completed').length;
+  const inProgressCount = projects.filter(p => p.status === 'Active').length;
+  const pendingCount = projects.filter(p => p.status === 'Pending').length;
+  const archivedCount = projects.filter(p => p.status === 'Archived').length;
+
+  // Simple check for approaching deadline (within 7 days)
+  const approachingCount = projects.filter(p => {
+    if (p.status === 'Completed' || p.status === 'Archived') return false;
+    if (!p.deadline) return false;
+    const deadline = new Date(p.deadline);
+    const today = new Date();
+    const diffTime = deadline.getTime() - today.getTime();
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)); 
+    return diffDays >= 0 && diffDays <= 7;
+  }).length;
+
   return (
     <div className="w-80 flex-shrink-0 flex flex-col gap-6">
       {/* My Team Section */}
@@ -66,7 +82,10 @@ export const LeftPanel: React.FC<LeftPanelProps> = ({ showStats = false }) => {
         </div>
 
         <div className="space-y-3">
-          {myProjects.map(project => {
+          {myProjects.length === 0 ? (
+             <div className="text-sm text-slate-400 text-center py-4">暂无项目</div>
+          ) : (
+             myProjects.map(project => {
             const isActive = isProjectActive(project);
 
             // Dynamic classes based on active state only
@@ -99,7 +118,8 @@ export const LeftPanel: React.FC<LeftPanelProps> = ({ showStats = false }) => {
                 </div>
               </div>
             );
-          })}
+          })
+          )}
         </div>
       </div>
 
@@ -114,7 +134,7 @@ export const LeftPanel: React.FC<LeftPanelProps> = ({ showStats = false }) => {
             </div>
             <div className="flex justify-between items-center group cursor-default">
               <span className="text-slate-600 group-hover:text-slate-900 transition-colors">已完成总数:</span>
-              <span className="font-bold text-slate-800 bg-slate-100 px-2 py-0.5 rounded-full">15</span>
+              <span className="font-bold text-slate-800 bg-slate-100 px-2 py-0.5 rounded-full">{completedCount}</span>
             </div>
             <div className="flex justify-between items-center group cursor-default">
               <span className="text-slate-600 group-hover:text-slate-900 transition-colors">已加入项目:</span>
@@ -127,35 +147,35 @@ export const LeftPanel: React.FC<LeftPanelProps> = ({ showStats = false }) => {
                   <span className="w-1.5 h-1.5 bg-orange-500 rounded-full"></span>
                   即将截止
                 </span>
-                <span className="text-slate-500">1 (剩余 10 天)</span>
+                <span className="text-slate-500">{approachingCount}</span>
               </div>
               <div className="flex items-center justify-between text-xs">
                 <span className="flex items-center gap-2 text-slate-700 font-medium">
                   <span className="w-1.5 h-1.5 bg-slate-700 rounded-full"></span>
                   进行中
                 </span>
-                <span className="text-slate-500">2</span>
+                <span className="text-slate-500">{inProgressCount}</span>
               </div>
               <div className="flex items-center justify-between text-xs">
                 <span className="flex items-center gap-2 text-red-500 font-medium">
                   <span className="w-1.5 h-1.5 bg-red-500 rounded-full"></span>
                   已结束
                 </span>
-                <span className="text-slate-500">1 (逾期 60 天)</span>
+                <span className="text-slate-500">{archivedCount}</span>
               </div>
               <div className="flex items-center justify-between text-xs">
                 <span className="flex items-center gap-2 text-blue-400 font-medium">
                   <span className="w-1.5 h-1.5 bg-blue-400 rounded-full"></span>
                   未开始
                 </span>
-                <span className="text-slate-500">1</span>
+                <span className="text-slate-500">{pendingCount}</span>
               </div>
               <div className="flex items-center justify-between text-xs">
                 <span className="flex items-center gap-2 text-green-500 font-medium">
                   <span className="w-1.5 h-1.5 bg-green-500 rounded-full"></span>
                   已完成
                 </span>
-                <span className="text-slate-500">1</span>
+                <span className="text-slate-500">{completedCount}</span>
               </div>
             </div>
           </div>

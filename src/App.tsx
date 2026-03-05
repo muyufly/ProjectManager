@@ -8,6 +8,7 @@ import { TeamDetailPage } from './pages/TeamDetailPage';
 import { AnnouncementListPage } from './pages/AnnouncementListPage';
 import { AnnouncementDetailPage } from './pages/AnnouncementDetailPage';
 import { ProjectDetailPage } from './pages/ProjectDetailPage';
+import { ProjectTeamPage } from './pages/ProjectTeamPage';
 import { InviteAcceptPage } from './pages/InviteAcceptPage';
 import { LoginPage } from './pages/LoginPage';
 import { RegisterPage } from './pages/RegisterPage';
@@ -125,6 +126,7 @@ const App: React.FC = () => {
                   <Route path="/tasks/:projectId" element={<TasksPage />} />
                   <Route path="/profile" element={<ProfilePage />} />
                   <Route path="/team/:teamId" element={<TeamDetailPage />} />
+                  <Route path="/project-team" element={<ProjectTeamPage />} />
                   <Route path="/project/:projectId" element={<ProjectDetailPage />} />
                   <Route path="/accept-invite/:token" element={<InviteAcceptPage />} />
                   <Route path="/announcements" element={<AnnouncementListPage />} />

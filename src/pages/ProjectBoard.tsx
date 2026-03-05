@@ -22,10 +22,13 @@ export const ProjectBoard: React.FC = () => {
 
   const getStatusColor = (status: TaskStatus) => {
     switch (status) {
-      case TaskStatus.TODO: return 'bg-slate-100 border-slate-200';
+      case TaskStatus.NOT_STARTED: return 'bg-slate-100 border-slate-200';
+      case TaskStatus.OPEN_FOR_CLAIM: return 'bg-indigo-50 border-indigo-200';
       case TaskStatus.IN_PROGRESS: return 'bg-blue-50 border-blue-200';
-      case TaskStatus.REVIEW: return 'bg-amber-50 border-amber-200';
+      case TaskStatus.IN_REVIEW: return 'bg-amber-50 border-amber-200';
       case TaskStatus.DONE: return 'bg-emerald-50 border-emerald-200';
+      case TaskStatus.CANCELLED: return 'bg-rose-50 border-rose-200';
+      default: return 'bg-slate-50 border-slate-200';
     }
   };
 
@@ -70,14 +73,14 @@ export const ProjectBoard: React.FC = () => {
 
         {/* Simple Status Move Controls */}
         <div className="mt-2 pt-2 border-t border-slate-100 flex gap-1 justify-end">
-          {task.status !== TaskStatus.TODO && (
-            <button onClick={() => handleStatusChange(task.id, TaskStatus.TODO)} className="text-[10px] bg-slate-100 hover:bg-slate-200 px-2 py-1 rounded text-slate-600">Todo</button>
+          {task.status !== TaskStatus.NOT_STARTED && (
+            <button onClick={() => handleStatusChange(task.id, TaskStatus.NOT_STARTED)} className="text-[10px] bg-slate-100 hover:bg-slate-200 px-2 py-1 rounded text-slate-600">Todo</button>
           )}
           {task.status !== TaskStatus.IN_PROGRESS && (
             <button onClick={() => handleStatusChange(task.id, TaskStatus.IN_PROGRESS)} className="text-[10px] bg-blue-50 hover:bg-blue-100 px-2 py-1 rounded text-blue-600">Prog</button>
           )}
-          {task.status !== TaskStatus.REVIEW && (
-            <button onClick={() => handleStatusChange(task.id, TaskStatus.REVIEW)} className="text-[10px] bg-amber-50 hover:bg-amber-100 px-2 py-1 rounded text-amber-600">Rev</button>
+          {task.status !== TaskStatus.IN_REVIEW && (
+            <button onClick={() => handleStatusChange(task.id, TaskStatus.IN_REVIEW)} className="text-[10px] bg-amber-50 hover:bg-amber-100 px-2 py-1 rounded text-amber-600">Rev</button>
           )}
           {task.status !== TaskStatus.DONE && (
             <button onClick={() => handleStatusChange(task.id, TaskStatus.DONE)} className="text-[10px] bg-emerald-50 hover:bg-emerald-100 px-2 py-1 rounded text-emerald-600">Done</button>
@@ -159,7 +162,7 @@ export const ProjectBoard: React.FC = () => {
               title: data.title,
               description: data.description,
               priority: data.priority,
-              status: TaskStatus.TODO,
+              status: TaskStatus.NOT_STARTED,
               projectId: data.projectId,
               dueDate: data.dueDate,
               dependencies: [],

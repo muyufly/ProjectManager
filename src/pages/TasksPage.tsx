@@ -14,36 +14,7 @@ interface RoleGroup {
     members: { name: string; avatar: string; role: string }[];
 }
 
-const MOCK_GROUPS: RoleGroup[] = [
-    {
-        id: 'g1',
-        name: '产品组',
-        members: [
-            { name: '成员3', avatar: 'https://ui-avatars.com/api/?name=M3&background=random', role: '产品经理' }
-        ]
-    },
-    {
-        id: 'g2',
-        name: '视觉设计',
-        members: [
-            { name: 'Xiangmu', avatar: 'https://ui-avatars.com/api/?name=Xiangmu&background=random', role: 'UI设计师' }
-        ]
-    },
-    {
-        id: 'g3',
-        name: '前端开发',
-        members: [
-            { name: '成员1', avatar: 'https://ui-avatars.com/api/?name=M1&background=random', role: '前端工程师' }
-        ]
-    },
-    {
-        id: 'g4',
-        name: '后端开发',
-        members: [
-            { name: '成员2', avatar: 'https://ui-avatars.com/api/?name=M2&background=random', role: '后端工程师' }
-        ]
-    }
-];
+const MOCK_GROUPS: RoleGroup[] = [];
 
 export const TasksPage: React.FC = () => {
     const { state, setState } = useContext(AppContext);
@@ -103,15 +74,6 @@ export const TasksPage: React.FC = () => {
                         >
                             {isDivisionVisible ? '隐藏分工' : '查看分工'}
                         </button>
-                        <button
-                            onClick={() => {
-                                setActiveProjectId(currentProjectId);
-                                setIsTaskModalOpen(true);
-                            }}
-                            className="px-8 py-3.5 bg-blue-500 text-white font-bold rounded-2xl shadow-lg shadow-blue-100 hover:bg-blue-600 transition-all flex items-center justify-center gap-2"
-                        >
-                            <Plus size={20} /> 发布任务
-                        </button>
                     </div>
                 </div>
 
@@ -125,14 +87,8 @@ export const TasksPage: React.FC = () => {
                                     <div className="w-10 h-10 bg-blue-100 rounded-2xl flex items-center justify-center text-blue-600">
                                         <UsersIcon size={20} />
                                     </div>
-                                    <h4 className="text-xl font-black text-slate-800">项目分工矩阵</h4>
+                                    <h4 className="text-xl font-black text-slate-800">项目分工</h4>
                                 </div>
-                                <button
-                                    onClick={() => alert('此功能开发中')}
-                                    className="flex items-center gap-1 text-sm text-blue-600 font-bold hover:bg-blue-50 px-4 py-2 rounded-xl transition-colors border border-transparent hover:border-blue-100"
-                                >
-                                    <Plus size={16} /> 新建小组
-                                </button>
                             </div>
 
                             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
@@ -156,9 +112,6 @@ export const TasksPage: React.FC = () => {
                                                     </div>
                                                 </div>
                                             ))}
-                                            <button className="w-full py-3 mt-4 border-2 border-dashed border-slate-100 rounded-2xl text-slate-300 text-xs font-bold hover:border-blue-200 hover:text-blue-500 hover:bg-blue-50/50 transition-all flex items-center justify-center gap-2">
-                                                <Plus size={14} /> 添加成员
-                                            </button>
                                         </div>
                                     </div>
                                 ))}
@@ -170,7 +123,7 @@ export const TasksPage: React.FC = () => {
                     <div className="bg-slate-50/50 rounded-[2.5rem] p-8 border border-slate-100">
                         <div className="flex items-center justify-between mb-10">
                             <h4 className="text-xl font-black text-slate-800 flex items-center gap-3">
-                                <Clock className="text-blue-500" size={24} /> 项目生命周期
+                                <Clock className="text-blue-500" size={24} /> 任务详情
                             </h4>
                             <div className="flex gap-2">
                                 <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">已完成 {projectTasks.filter(t => t.status === TaskStatus.DONE).length}</span>
@@ -245,7 +198,7 @@ export const TasksPage: React.FC = () => {
                         <ListTodo className="text-blue-600" size={40} />
                     </div>
                     <div>
-                        <h1 className="text-4xl font-black text-slate-800 tracking-tight">任务指挥中心</h1>
+                        <h1 className="text-4xl font-black text-slate-800 tracking-tight">我的任务</h1>
                         <p className="text-slate-400 font-bold uppercase text-[10px] tracking-[0.3em] mt-1.5 opacity-60">Task Strategic Command</p>
                     </div>
                 </div>
