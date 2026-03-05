@@ -1,99 +1,114 @@
 export enum TaskStatus {
-  TODO = 'TODO',
+  NOT_STARTED = 'NOT_STARTED',
+  OPEN_FOR_CLAIM = 'OPEN_FOR_CLAIM',
   IN_PROGRESS = 'IN_PROGRESS',
-  REVIEW = 'REVIEW',
+  IN_REVIEW = 'IN_REVIEW',
   DONE = 'DONE',
+  CANCELLED = 'CANCELLED',
 }
 
 export enum TaskPriority {
   LOW = 'LOW',
   MEDIUM = 'MEDIUM',
   HIGH = 'HIGH',
+  URGENT = 'URGENT',
 }
 
 export interface User {
-  id: string;
+  id: number;
+  userId?: number;
+  username?: string;
   name: string;
   avatar: string;
-  role: 'Admin' | 'Manager' | 'Member';
+  avatarUrl?: string; // from api
+  role: 'Admin' | 'Manager' | 'Member' | string;
   department?: string;
   jobTitle?: string;
 }
 
 export interface Comment {
-  id: string;
-  userId: string;
+  id: number;
+  userId: number;
   content: string;
   createdAt: string;
 }
 
 export interface Attachment {
-  id: string;
+  id: number;
   fileName: string;
   fileUrl: string;
   uploadedAt: string;
 }
 
 export interface Task {
-  id: string;
+  id: number;
+  taskId?: number;
   title: string;
   description: string;
   status: TaskStatus;
   priority: TaskPriority;
-  projectId: string;
-  assigneeId?: string;
+  projectId: number;
+  assigneeId?: number;
   dueDate: string;
   completedAt?: string;
-  dependencies: string[];
+  dependencies: number[];
   comments: Comment[];
   attachments?: Attachment[];
 }
 
 export interface Project {
-  id: string;
+  id: number;
+  projectId?: number;
   name: string;
   description: string;
   requirements?: string;
   deadline: string;
-  teamId: string;
-  managerId: string;
-  memberIds: string[];
-  status: 'Active' | 'Archived' | 'Pending' | 'Completed';
+  teamId: number;
+  managerId?: number;
+  memberIds: number[];
+  status: 'Active' | 'Archived' | 'Pending' | 'Completed' | string;
+  creatorId?: number;
   createdAt: string;
 }
 
 export interface Team {
-  id: string;
+  id: number;
+  teamId?: number;
   name: string;
-  ownerId: string;
-  memberIds: string[];
+  ownerId: number;
+  creatorId?: number;
+  memberIds: number[];
+  adminIds?: number[];
+  description?: string;
 }
 
 export interface Notification {
-  id: string;
+  id: number;
   title: string;
   content: string;
-  type: 'system' | 'invite' | 'task' | 'mention';
+  type: 'system' | 'invite' | 'task' | 'mention' | string;
   isRead: boolean;
   createdAt: string;
 }
 
 export interface Announcement {
-  id: string;
+  id: number;
   title: string;
   content: string;
   date: string;
+  time?: string;
+  isRead?: boolean;
 }
 
 export interface WorkLog {
-  id: string;
+  id: number;
   date: string;
   content: string;
   hours: number;
 }
 
 export interface AppState {
-  currentUser: User;
+  currentUser: User | null;
   teams: Team[];
   projects: Project[];
   tasks: Task[];

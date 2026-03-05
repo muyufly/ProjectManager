@@ -8,7 +8,7 @@ export const CalendarView: React.FC = () => {
   const [currentMonth, setCurrentMonth] = useState(new Date());
 
   // Filter tasks for current user
-  const myTasks = tasks.filter(t => t.assigneeId === currentUser.id);
+  const myTasks = currentUser ? tasks.filter(t => t.assigneeId === currentUser.id) : [];
 
   const getDaysInMonth = (date: Date) => {
     const year = date.getFullYear();
@@ -47,22 +47,20 @@ export const CalendarView: React.FC = () => {
       return (
         <div key={day} className="bg-white h-32 border border-slate-100 p-2 hover:bg-slate-50 transition-colors overflow-y-auto">
           <div className="flex justify-between items-center mb-1">
-            <span className={`text-sm font-medium ${
-                new Date().toISOString().split('T')[0] === dateStr 
-                ? 'bg-indigo-600 text-white w-6 h-6 flex items-center justify-center rounded-full' 
+            <span className={`text-sm font-medium ${new Date().toISOString().split('T')[0] === dateStr
+                ? 'bg-indigo-600 text-white w-6 h-6 flex items-center justify-center rounded-full'
                 : 'text-slate-700'
-            }`}>
+              }`}>
               {day}
             </span>
             {daysTasks.length > 0 && <span className="text-[10px] text-slate-400">{daysTasks.length} tasks</span>}
           </div>
           <div className="space-y-1">
             {daysTasks.map(task => (
-              <div key={task.id} className={`text-[10px] p-1 rounded truncate border-l-2 ${
-                  task.priority === 'HIGH' ? 'bg-red-50 border-red-500 text-red-700' : 
+              <div key={task.id} className={`text-[10px] p-1 rounded truncate border-l-2 ${task.priority === 'HIGH' ? 'bg-red-50 border-red-500 text-red-700' :
                   task.priority === 'MEDIUM' ? 'bg-orange-50 border-orange-500 text-orange-700' :
-                  'bg-blue-50 border-blue-500 text-blue-700'
-              }`}>
+                    'bg-blue-50 border-blue-500 text-blue-700'
+                }`}>
                 {task.title}
               </div>
             ))}
@@ -90,7 +88,7 @@ export const CalendarView: React.FC = () => {
           </div>
         </div>
       </div>
-      
+
       <div className="grid grid-cols-7 border-b border-slate-200 bg-slate-50">
         {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(d => (
           <div key={d} className="py-2 text-center text-xs font-semibold text-slate-500 uppercase tracking-wider">
@@ -98,7 +96,7 @@ export const CalendarView: React.FC = () => {
           </div>
         ))}
       </div>
-      
+
       <div className="grid grid-cols-7">
         {renderDays()}
       </div>

@@ -6,7 +6,7 @@ const d3 = d3Base as any;
 
 interface DependencyGraphProps {
   tasks: Task[];
-  onNodeClick: (taskId: string) => void;
+  onNodeClick: (taskId: number) => void;
 }
 
 export const DependencyGraph: React.FC<DependencyGraphProps> = ({ tasks, onNodeClick }) => {
@@ -28,7 +28,7 @@ export const DependencyGraph: React.FC<DependencyGraphProps> = ({ tasks, onNodeC
       .style("border-radius", "0.5rem");
 
     const nodes = tasks.map(t => ({ id: t.id, title: t.title, status: t.status }));
-    const links: { source: string; target: string }[] = [];
+    const links: { source: number; target: number }[] = [];
 
     tasks.forEach(task => {
       task.dependencies.forEach(depId => {
@@ -104,7 +104,7 @@ export const DependencyGraph: React.FC<DependencyGraphProps> = ({ tasks, onNodeC
       node
         .attr("cx", (d: any) => d.x)
         .attr("cy", (d: any) => d.y);
-      
+
       label
         .attr("x", (d: any) => d.x)
         .attr("y", (d: any) => d.y);

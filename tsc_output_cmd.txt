@@ -1,0 +1,14 @@
+src/components/DependencyGraph.tsx(36,24): error TS2322: Type 'number' is not assignable to type 'string'.
+src/components/DependencyGraph.tsx(36,39): error TS2322: Type 'number' is not assignable to type 'string'.
+src/pages/AnnouncementDetailPage.tsx(13,48): error TS2367: This comparison appears to be unintentional because the types 'number' and 'string | undefined' have no overlap.
+src/pages/CalendarView.tsx(11,54): error TS18047: 'currentUser' is possibly 'null'.
+src/pages/ProfilePage.tsx(19,28): error TS18047: 'currentUser' is possibly 'null'.
+src/pages/ProfilePage.tsx(24,73): error TS18047: 'currentUser' is possibly 'null'.
+src/pages/ProfilePage.tsx(28,63): error TS18047: 'currentUser' is possibly 'null'.
+src/pages/ProfilePage.tsx(32,63): error TS18047: 'currentUser' is possibly 'null'.
+src/pages/ProfilePage.tsx(32,87): error TS18047: 'currentUser' is possibly 'null'.
+src/pages/ProjectsList.tsx(22,54): error TS2345: Argument of type 'number' is not assignable to parameter of type 'string'.
+src/pages/TeamDetailPage.tsx(13,32): error TS2367: This comparison appears to be unintentional because the types 'number' and 'string | undefined' have no overlap.
+src/pages/TeamDetailPage.tsx(14,38): error TS2367: This comparison appears to be unintentional because the types 'number' and 'string | undefined' have no overlap.
+src/services/projectService.ts(5,42): error TS2367: This comparison appears to be unintentional because the types 'number' and 'string' have no overlap.
+src/services/projectService.ts(13,42): error TS2367: This comparison appears to be unintentional because the types 'number' and 'string' have no overlap.

@@ -2,51 +2,103 @@ import React, { useContext } from 'react';
 import { AppContext } from '../constants';
 import { LeftPanel } from '../components/LeftPanel';
 import { useNavigate } from 'react-router-dom';
+import { NotifyAPI } from '../services/api';
+import { Check, Megaphone } from 'lucide-react';
 
 export const AnnouncementListPage: React.FC = () => {
-  const { state } = useContext(AppContext);
-  const { announcements } = state;
-  const navigate = useNavigate();
+    const { state, setState } = useContext(AppContext);
+    const { announcements } = state;
+    const navigate = useNavigate();
 
-  return (
-    <div className="flex gap-6 h-full">
-      <LeftPanel />
-      
-      <div className="flex-1 flex flex-col gap-6 overflow-y-auto pr-2 pb-10">
-        <div className="flex items-center gap-4">
-            <div className="bg-blue-200 w-fit px-4 py-2 rounded-lg shadow-sm">
-                <h2 className="text-xl font-bold text-slate-800">项目公告</h2>
-            </div>
-             <button className="px-6 py-2 rounded-full border border-blue-400 text-blue-500 font-bold hover:bg-blue-50 transition-colors text-sm">
-                发布公告
-            </button>
-        </div>
+    const handleMarkAllAsRead = async () => {
+        const unreadIds = announcements.filter(a => !a.isRead).map(a => a.id);
+        if (unreadIds.length === 0) return;
+        try {
+            await NotifyAPI.read({ messageIds: unreadIds });
+            setState(prev => ({
+                ...prev,
+                announcements: prev.announcements.map(a => ({ ...a, isRead: true }))
+            }));
+        } catch (e) {
+            console.error('Failed to mark all as read', e);
+        }
+    };
 
-        <div className="flex flex-col gap-4">
-            {announcements.map((announcement) => (
-                <div 
-                    key={announcement.id}
-                    className="bg-white p-6 rounded-xl shadow-sm border border-slate-200 cursor-pointer hover:shadow-md transition-shadow group"
-                    onClick={() => navigate(`/announcement/${announcement.id}`)}
-                >
-                     <div className="flex justify-between items-start mb-2">
-                        <h3 className="font-bold text-slate-800 text-lg group-hover:text-blue-600 transition-colors">{announcement.title}</h3>
-                        <div className="bg-orange-400 text-white text-xs px-2 py-0.5 rounded shadow-sm">
-                            {announcement.id}
+    const handleMarkAsRead = async (id: number) => {
+        try {
+            await NotifyAPI.read({ messageIds: [id] });
+            setState(prev => ({
+                ...prev,
+                announcements: prev.announcements.map(a => a.id === id ? { ...a, isRead: true } : a)
+            }));
+        } catch (e) {
+            console.error('Failed to mark as read', e);
+        }
+    };
+
+    return (
+        <div className="flex gap-6 h-full">
+            <LeftPanel />
+
+            <div className="flex-1 flex flex-col gap-6 overflow-y-auto pr-2 pb-10">
+                <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-4">
+                        <div className="bg-indigo-600 p-2.5 rounded-2xl shadow-lg shadow-indigo-100">
+                            <Megaphone size={24} className="text-white" />
                         </div>
-                     </div>
-                    <div className="flex justify-between items-end gap-6">
-                        <p className="text-slate-600 text-sm leading-relaxed h-[60px] overflow-hidden text-ellipsis line-clamp-2">
-                            {announcement.content}
-                        </p>
-                        <span className="text-xs text-slate-400 whitespace-nowrap mb-1">
-                            {announcement.date}
-                        </span>
+                        <div>
+                            <h2 className="text-2xl font-black text-slate-800 tracking-tight">项目公告中心</h2>
+                            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em] mt-0.5">Announcement Center</p>
+                        </div>
+                    </div>
+                    <div className="flex gap-3">
+                        {announcements.some(a => !a.isRead) && (
+                            <button
+                                onClick={handleMarkAllAsRead}
+                                className="px-6 py-2.5 bg-white border border-slate-200 text-slate-600 font-bold rounded-2xl hover:bg-slate-50 transition-all text-sm flex items-center gap-2 shadow-sm"
+                            >
+                                <Check size={16} /> 全部已读
+                            </button>
+                        )}
+                        <button className="px-6 py-2.5 bg-indigo-600 text-white font-bold rounded-2xl hover:bg-indigo-700 transition-all text-sm shadow-lg shadow-indigo-100">
+                            发布公告
+                        </button>
                     </div>
                 </div>
-            ))}
+
+                <div className="flex flex-col gap-4">
+                    {announcements.map((announcement) => (
+                        <div
+                            key={announcement.id}
+                            className={`bg-white p-8 rounded-[2rem] border transition-all cursor-pointer relative group ${!announcement.isRead ? 'border-indigo-100 shadow-xl shadow-indigo-50/50' : 'border-slate-100 shadow-sm hover:shadow-md'}`}
+                            onClick={() => {
+                                if (!announcement.isRead) handleMarkAsRead(announcement.id);
+                                navigate(`/announcement/${announcement.id}`);
+                            }}
+                        >
+                            {!announcement.isRead && (
+                                <div className="absolute top-6 left-6 w-3 h-3 bg-indigo-500 rounded-full shadow-[0_0_12px_rgba(79,70,229,0.8)] z-10 ring-4 ring-white"></div>
+                            )}
+                            <div className="flex justify-between items-start mb-4">
+                                <div className="flex-1 pr-10">
+                                    <h3 className={`font-black text-xl leading-tight transition-colors ${!announcement.isRead ? 'text-slate-900 group-hover:text-indigo-600' : 'text-slate-600 group-hover:text-slate-900'}`}>{announcement.title}</h3>
+                                </div>
+                                <div className={`px-3 py-1 rounded-lg text-[10px] font-bold uppercase tracking-widest ${!announcement.isRead ? 'bg-indigo-50 text-indigo-600' : 'bg-slate-50 text-slate-400'}`}>
+                                    ID: {announcement.id}
+                                </div>
+                            </div>
+                            <div className="flex justify-between items-end gap-6">
+                                <p className="text-slate-600 text-sm leading-relaxed h-[60px] overflow-hidden text-ellipsis line-clamp-2">
+                                    {announcement.content}
+                                </p>
+                                <span className="text-xs text-slate-400 whitespace-nowrap mb-1">
+                                    {announcement.date}
+                                </span>
+                            </div>
+                        </div>
+                    ))}
+                </div>
+            </div>
         </div>
-      </div>
-    </div>
-  );
+    );
 };
