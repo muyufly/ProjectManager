@@ -480,33 +480,6 @@ export const ProjectTeamPage: React.FC = () => {
                     )}
                 </div>
 
-                {isTaskModalOpen && activeProjectId && (
-                    <CreateTaskModal
-                        projectId={activeProjectId}
-                        onClose={() => setIsTaskModalOpen(false)}
-                        onSubmit={async (data) => {
-                            try {
-                                const taskId = await TaskAPI.create(data);
-                                const newTask: Task = {
-                                    id: taskId,
-                                    taskId: taskId,
-                                    title: data.title,
-                                    description: data.description,
-                                    priority: data.priority,
-                                    status: TaskStatus.NOT_STARTED,
-                                    projectId: data.projectId,
-                                    dueDate: data.dueDate,
-                                    dependencies: [],
-                                    comments: []
-                                };
-                                setState(prev => ({ ...prev, tasks: [...prev.tasks, newTask] }));
-                            } catch (e) {
-                                alert('创建任务失败');
-                            }
-                        }}
-                    />
-                )}
-
                 {selectedTask && (
                     <TaskDetailModal
                         task={selectedTask}
@@ -561,6 +534,33 @@ export const ProjectTeamPage: React.FC = () => {
                             setState(prev => ({ ...prev, teams: [...prev.teams, newTeam] }));
                         } catch (e) {
                             alert('创建团队失败');
+                        }
+                    }}
+                />
+            )}
+
+            {isTaskModalOpen && activeProjectId && (
+                <CreateTaskModal
+                    projectId={activeProjectId}
+                    onClose={() => setIsTaskModalOpen(false)}
+                    onSubmit={async (data) => {
+                        try {
+                            const taskId = await TaskAPI.create(data);
+                            const newTask: Task = {
+                                id: taskId,
+                                taskId: taskId,
+                                title: data.title,
+                                description: data.description,
+                                priority: data.priority,
+                                status: TaskStatus.NOT_STARTED,
+                                projectId: data.projectId,
+                                dueDate: data.dueDate,
+                                dependencies: [],
+                                comments: []
+                            };
+                            setState(prev => ({ ...prev, tasks: [...prev.tasks, newTask] }));
+                        } catch (e) {
+                            alert('创建任务失败');
                         }
                     }}
                 />
