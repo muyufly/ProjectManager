@@ -72,7 +72,6 @@ export interface Project {
   name: string;
   description: string;
   requirements?: string;
-  deadline: string;
   teamId: number;
   managerId?: number;
   memberIds: number[];

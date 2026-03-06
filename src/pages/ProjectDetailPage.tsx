@@ -47,9 +47,7 @@ export const ProjectDetailPage: React.FC = () => {
         try {
             const groupId = await ProjectAPI.createGroup({
                 projectId: project.projectId || project.id,
-                name,
-                code: name.toLowerCase(),
-                permissions: []
+                name
             });
             setGroups(prev => [...prev, { roleGroupId: groupId, name, projectId: project.projectId || project.id }]);
         } catch (e) {
@@ -89,10 +87,7 @@ export const ProjectDetailPage: React.FC = () => {
                                     <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">状态</span>
                                     <span className="text-sm font-bold text-emerald-500">{project.status}</span>
                                 </div>
-                                <div className="flex flex-col">
-                                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">截止日期</span>
-                                    <span className="text-sm font-bold text-slate-700">{project.deadline}</span>
-                                </div>
+
                             </div>
                         </div>
                     </div>

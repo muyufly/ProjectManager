@@ -78,11 +78,14 @@ export const UserAPI = {
 
     // Auto-repair corrupted URL (fixes the double https:// duplication)
     let finalAvatar = data.avatarUrl || data.avatar || null;
-    if (typeof finalAvatar === 'string' && finalAvatar.includes('https://') && finalAvatar.lastIndexOf('https://') > 0) {
-      finalAvatar = 'https://' + finalAvatar.split('https://').pop();
+    if (typeof finalAvatar === 'string' && finalAvatar.includes('https://')) {
+      const parts = finalAvatar.split('https://');
+      finalAvatar = 'https://' + parts[parts.length - 1];
     }
 
-    const finalId = data.userId || data.id || (data.sduId ? parseInt(data.sduId.replace(/\D/g, '')) : 0) ||
+    // Prioritize userId/id/memberId. Only hash if absolutely nothing found.
+    const finalId = Number(data.userId || data.id || data.memberId || 0) ||
+      (data.sduId ? parseInt(data.sduId.replace(/\D/g, '')) : 0) ||
       (data.username ? Math.abs(data.username.split('').reduce((a: number, b: string) => ((a << 5) - a) + b.charCodeAt(0), 0)) : 9999);
 
     return {
@@ -149,27 +152,28 @@ export const TeamAPI = {
 
   members: async (teamId: number) => {
     const res = await request<any>(`/team/members?teamId=${teamId}`);
-    const list = Array.isArray(res) ? res : (res?.data || []);
+    // Handle cases where data is an array directly vs. wrapped in { items: [] }
+    const list = Array.isArray(res) ? res : (res?.items || res?.data || []);
 
-    return list.map((u: any) => {
+    return Array.isArray(list) ? list.map((u: any) => {
+      // Per user, userId and memberId are the same absolute number in this project
+      const identifiedId = Number(u.userId || u.memberId || u.id || 0);
+
       let finalAvatar = u.avatarUrl || u.avatar || null;
-      if (typeof finalAvatar === 'string' && finalAvatar.includes('https://') && finalAvatar.lastIndexOf('https://') > 0) {
-        finalAvatar = 'https://' + finalAvatar.split('https://').pop();
+      if (typeof finalAvatar === 'string' && finalAvatar.includes('https://')) {
+        const parts = finalAvatar.split('https://');
+        finalAvatar = 'https://' + parts[parts.length - 1];
       }
-
-      // Robust ID resolution: prefer userId/id, fallback to sduId, then hashed username
-      const identifiedId = u.userId || u.id || (u.sduId ? parseInt(u.sduId.replace(/\D/g, '')) : 0) ||
-        (u.username ? Math.abs(u.username.split('').reduce((a: number, b: string) => ((a << 5) - a) + b.charCodeAt(0), 0)) : 9999);
 
       return {
         ...u,
-        memberId: Number(u.memberId), // Store specific ID for request use
+        memberId: identifiedId,
         userId: identifiedId,
         id: identifiedId,
-        name: u.realname || u.username || '用户',
-        avatar: finalAvatar
+        name: u.name || u.realname || u.username || (u.user && (u.user.name || u.user.username || u.user.realname)) || `用户#${identifiedId}`,
+        avatar: finalAvatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(u.username || 'U')}&background=random`
       };
-    });
+    }) : [];
   },
 
   quit: (data: { teamId: number }) =>
@@ -189,22 +193,45 @@ export const ProjectAPI = {
   list: (teamId: number, page: number = 1, size: number = 10) =>
     request<any>(`/project/list?teamId=${teamId}&page=${page}&size=${size}`),
 
-  listMember: (projectId: number, page: number = 1, size: number = 10) =>
-    request<any>(`/project/listMember?projectId=${projectId}&page=${page}&size=${size}`),
+  listMember: async (projectId: number, page: number = 1, size: number = 10) => {
+    const res = await request<any>(`/project/listMember?projectId=${projectId}&page=${page}&size=${size}`);
+    // Support both direct array response (unlikely for paginated) and { items: [] } wrapper
+    const list = Array.isArray(res) ? res : (res?.items || []);
 
-  invite: (data: { projectId: number; userId: number; expiration?: number }) =>
+    const mappedItems = list.map((m: any) => {
+      const identifiedId = Number(m.userId || m.memberId || m.id || 0);
+
+      let finalAvatar = m.avatarUrl || m.avatar || null;
+      if (typeof finalAvatar === 'string' && finalAvatar.includes('https://') && finalAvatar.lastIndexOf('https://') > 0) {
+        finalAvatar = 'https://' + finalAvatar.split('https://').pop();
+      }
+
+      return {
+        ...m,
+        userId: identifiedId,
+        id: identifiedId,
+        name: m.name || m.realname || m.username || (m.user && (m.user.name || m.user.username || m.user.realname)) || `用户#${identifiedId}`,
+        avatar: finalAvatar || `https://ui-avatars.com/api/?name=${m.username || 'U'}&background=random`
+      };
+    });
+
+    if (Array.isArray(res)) return { items: mappedItems };
+    return { ...res, items: mappedItems };
+  },
+
+  invite: (data: { projectId: number; userId: number; role?: string }) =>
     request<string>('/project/invite', { method: 'POST', body: JSON.stringify(data) }),
 
   removeMember: (data: { projectId: number; memberId: number }) =>
     request<string>('/project/removeMember', { method: 'POST', body: JSON.stringify(data) }),
 
-  createGroup: (data: { projectId: number; code: string; name: string; permissions: string[] }) =>
+  createGroup: (data: { projectId: number; name: string; description?: string }) =>
     request<number>('/project/createGroup', { method: 'POST', body: JSON.stringify(data) }),
 
-  editGroup: (data: { groupId: number; name?: string; permissions?: string[] }) =>
+  editGroup: (data: { groupId: number; name?: string; description?: string; leaderUserId?: number }) =>
     request<string>('/project/editGroup', { method: 'POST', body: JSON.stringify(data) }),
 
-  deleteGroup: (data: { groupId: number }) =>
+  deleteGroup: (data: { roleGroupId: number }) =>
     request<string>('/project/deleteGroup', { method: 'POST', body: JSON.stringify(data) }),
 
   listGroup: (projectId: number, page: number = 1, size: number = 10) =>
@@ -213,10 +240,10 @@ export const ProjectAPI = {
   listGroupMember: (groupId: number, page: number = 1, size: number = 10) =>
     request<any>(`/project/listGroupMember?groupId=${groupId}&page=${page}&size=${size}`),
 
-  addGroupMember: (data: { groupId: number; memberId: number }) =>
+  addGroupMember: (data: { groupId: number; userId: number }) =>
     request<string>('/project/addGroupMember', { method: 'POST', body: JSON.stringify(data) }),
 
-  removeGroupMember: (data: { groupId: number; memberId: number }) =>
+  removeGroupMember: (data: { groupId: number; userId: number }) =>
     request<string>('/project/removeGroupMember', { method: 'POST', body: JSON.stringify(data) }),
 
   editRole: (data: { projectId: number; memberId: number; newRole: number }) =>

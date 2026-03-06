@@ -3,14 +3,14 @@ import { X } from 'lucide-react';
 
 interface CreateProjectModalProps {
     onClose: () => void;
-    onSubmit: (data: { name: string; description: string; deadline: string; teamId: number }) => Promise<void>;
+    onSubmit: (data: { name: string; description: string; teamId: number }) => Promise<void>;
     teams: { id: number; name: string }[];
 }
 
 export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({ onClose, onSubmit, teams }) => {
     const [name, setName] = useState('');
     const [description, setDescription] = useState('');
-    const [deadline, setDeadline] = useState('');
+
     const [teamId, setTeamId] = useState(teams[0]?.id || 0);
     const [loading, setLoading] = useState(false);
 
@@ -18,7 +18,7 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({ onClose,
         e.preventDefault();
         setLoading(true);
         try {
-            await onSubmit({ name, description, deadline, teamId });
+            await onSubmit({ name, description, teamId });
             onClose();
         } catch (error) {
             console.error(error);
@@ -63,16 +63,7 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({ onClose,
                             ))}
                         </select>
                     </div>
-                    <div>
-                        <label className="block text-sm font-bold text-slate-700 mb-2">截止日期</label>
-                        <input
-                            type="date"
-                            required
-                            value={deadline}
-                            onChange={e => setDeadline(e.target.value)}
-                            className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 outline-none transition-all"
-                        />
-                    </div>
+
                     <div>
                         <label className="block text-sm font-bold text-slate-700 mb-2">项目简介 (选填)</label>
                         <textarea

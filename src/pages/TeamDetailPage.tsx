@@ -21,9 +21,9 @@ export const TeamDetailPage: React.FC = () => {
     const fetchMembers = async () => {
         if (!tId) return;
         try {
-            const res = await TeamAPI.members(tId);
-            if (res.code === 200 && Array.isArray(res.data)) {
-                setTeamMembers(res.data);
+            const members = await TeamAPI.members(tId);
+            if (Array.isArray(members)) {
+                setTeamMembers(members);
             }
         } catch (e) {
             console.error('Failed to fetch team members:', e);
@@ -40,8 +40,10 @@ export const TeamDetailPage: React.FC = () => {
         <div className="flex-1 flex items-center justify-center text-slate-400">未找到团队</div>
     );
 
-    const isOwner = currentUser?.userId === team.ownerId;
-    const isAdmin = team.adminIds?.includes(currentUser?.userId || 0) || isOwner;
+    const myUserId = Number(currentUser?.userId || currentUser?.id || 0);
+    const ownerId = Number(team.ownerId || team.creatorId || 0);
+    const isOwner = myUserId > 0 && myUserId === ownerId;
+    const isAdmin = isOwner || (team.adminIds || []).map(id => Number(id)).includes(myUserId);
 
     const handleRemoveMember = async (memberId: number) => {
         if (!window.confirm('确定要移除该成员吗？')) return;
@@ -68,8 +70,8 @@ export const TeamDetailPage: React.FC = () => {
         setLoading(true);
         try {
             currentIsAdmin
-                ? await TeamAPI.removeAdmin({ teamId: team.teamId || team.id, adminId: memberId })
-                : await TeamAPI.addAdmin({ teamId: team.teamId || team.id, adminId: memberId });
+                ? await TeamAPI.removeAdmin({ teamId: team.teamId || team.id, memberId })
+                : await TeamAPI.addAdmin({ teamId: team.teamId || team.id, memberId });
 
             fetchMembers(); // Refresh members list
             setState(prev => ({
@@ -193,9 +195,9 @@ export const TeamDetailPage: React.FC = () => {
                                 </thead>
                                 <tbody className="divide-y divide-slate-100">
                                     {teamMembers.map(user => {
-                                        const uId = user.userId || user.id;
-                                        const isUserOwner = user.teamRole === 'CREATOR' || uId === team.ownerId;
-                                        const isUserAdmin = user.teamRole === 'ADMIN' || user.teamRole === 'CREATOR' || team.adminIds?.includes(uId) || isUserOwner;
+                                        const uId = Number(user.userId || user.id || 0);
+                                        const isUserOwner = user.teamRole === 'CREATOR' || (uId > 0 && uId === ownerId);
+                                        const isUserAdmin = user.teamRole === 'ADMIN' || user.teamRole === 'CREATOR' || user.teamRole === 'MANAGER' || (team.adminIds || []).map(id => Number(id)).includes(uId) || isUserOwner;
 
                                         return (
                                             <tr key={user.id} className="hover:bg-slate-50 transition-colors group">
@@ -229,17 +231,17 @@ export const TeamDetailPage: React.FC = () => {
                                                 {isAdmin && (
                                                     <td className="px-6 py-6 text-right">
                                                         <div className="flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                                                            {!isUserOwner && user.userId !== currentUser?.userId && (
+                                                            {!isUserOwner && uId !== currentUser?.userId && (
                                                                 <>
                                                                     <button
-                                                                        onClick={() => handleToggleAdmin(user.userId || user.id, isUserAdmin)}
+                                                                        onClick={() => handleToggleAdmin(user.memberId || uId, isUserAdmin)}
                                                                         className={`p-2 rounded-lg transition-colors ${isUserAdmin ? 'text-slate-400 hover:text-slate-600 hover:bg-slate-200' : 'text-blue-400 hover:text-blue-600 hover:bg-blue-50'}`}
                                                                         title={isUserAdmin ? '取消管理员' : '设为管理员'}
                                                                     >
                                                                         <Shield size={18} />
                                                                     </button>
                                                                     <button
-                                                                        onClick={() => handleRemoveMember(user.userId || user.id)}
+                                                                        onClick={() => handleRemoveMember(user.memberId || uId)}
                                                                         className="p-2 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
                                                                         title="移除成员"
                                                                     >

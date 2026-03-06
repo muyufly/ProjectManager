@@ -10,13 +10,15 @@ import { CreateTeamModal } from '../components/CreateTeamModal';
 import { TaskAPI, ProjectAPI, TeamAPI } from '../services/api';
 import { TaskDetailModal } from '../components/TaskDetailModal';
 import { InviteMemberModal } from '../components/InviteMemberModal';
+import { InviteProjectMemberModal } from '../components/InviteProjectMemberModal';
 import { UserPlus } from 'lucide-react';
 
-// Mock Role Groups (Same as in TasksPage)
+// Role Groups (Real backend data)
 interface RoleGroup {
-    id: string;
+    roleGroupId: number;
     name: string;
-    members: { name: string; avatar: string; role: string }[];
+    description: string;
+    members: any[]; // User objects from listGroupMember
 }
 
 export const ProjectTeamPage: React.FC = () => {
@@ -35,12 +37,36 @@ export const ProjectTeamPage: React.FC = () => {
     const [groupsByProject, setGroupsByProject] = useState<Record<number, RoleGroup[]>>({});
     const [isInviteModalOpen, setIsInviteModalOpen] = useState(false);
     const [inviteTeam, setInviteTeam] = useState<{ id: number, name: string } | null>(null);
+    const [isProjectInviteModalOpen, setIsProjectInviteModalOpen] = useState(false);
+    const [inviteProject, setInviteProject] = useState<{ id: number, name: string } | null>(null);
 
     // Use state data
     const displayProjects = state.projects;
     const displayTeams = state.teams;
 
-    const toggleProjectExpand = (projectId: number) => {
+    const fetchGroupsForProject = async (projectId: number) => {
+        try {
+            const res = await ProjectAPI.listGroup(projectId);
+            if (res.items) {
+                const groupsWithMembers = await Promise.all(res.items.map(async (group: any) => {
+                    const mRes = await ProjectAPI.listGroupMember(group.roleGroupId);
+                    return {
+                        ...group,
+                        members: mRes.items || []
+                    };
+                }));
+                setGroupsByProject(prev => ({ ...prev, [projectId]: groupsWithMembers }));
+            }
+        } catch (e) {
+            console.error('Failed to fetch groups', e);
+        }
+    };
+
+    const toggleProjectExpand = async (projectId: number) => {
+        const isCurrentlyExpanded = expandedProjects[projectId];
+        if (!isCurrentlyExpanded) {
+            await fetchGroupsForProject(projectId);
+        }
         setExpandedProjects(prev => ({
             ...prev,
             [projectId]: !prev[projectId]
@@ -58,24 +84,35 @@ export const ProjectTeamPage: React.FC = () => {
     };
 
     const handleManageAdmin = async (team: Team, requestMemberId: number, currentIsAdmin: boolean, targetUserId: number) => {
-        const isCreatorOfTeam = Number(team.creatorId || team.ownerId) === Number(state.currentUser?.userId);
-        if (!isCreatorOfTeam) return;
+        const myId = Number(state.currentUser?.userId || state.currentUser?.id || 0);
+        const ownerId = Number(team.creatorId || team.ownerId || 0);
+        const isCreatorOfTeam = myId > 0 && myId === ownerId;
+
+        if (!isCreatorOfTeam) {
+            alert('只有项目团队创建者才有权更改管理员身份');
+            return;
+        }
 
         // Skip if target is the creator/owner (they can't be modified)
-        if (targetUserId === Number(team.creatorId || team.ownerId)) return;
+        if (targetUserId === ownerId) {
+            alert('无法更改创建者的自身权限');
+            return;
+        }
 
         const action = currentIsAdmin ? '移除管理员权限' : '设为管理员';
         if (!window.confirm(`确认将该成员${action}吗？`)) return;
 
         try {
+            const tId = Number(team.teamId || team.id);
             if (currentIsAdmin) {
-                await TeamAPI.removeAdmin({ teamId: Number(team.id || team.teamId), memberId: requestMemberId });
+                await TeamAPI.removeAdmin({ teamId: tId, memberId: requestMemberId });
             } else {
-                await TeamAPI.addAdmin({ teamId: Number(team.id || team.teamId), memberId: requestMemberId });
+                await TeamAPI.addAdmin({ teamId: tId, memberId: requestMemberId });
             }
             if (refreshData) await refreshData();
         } catch (e: any) {
-            alert(`操纵失败: ${e.message}`);
+            console.error('ManageAdmin failed:', e);
+            alert(`操作失败: ${e.message}`);
         }
     };
 
@@ -134,40 +171,76 @@ export const ProjectTeamPage: React.FC = () => {
         setEditMode(prev => ({ ...prev, [projectId]: !prev[projectId] }));
     };
 
-    const addGroup = (projectId: number) => {
-        const current = getGroups(projectId);
-        const newGroup: RoleGroup = { id: `g${Date.now()}`, name: '新小组', members: [] };
-        setGroups(projectId, [...current, newGroup]);
+    const handleAddGroup = async (projectId: number) => {
+        const name = window.prompt('请输入新的小组/角色组名称', '开发组');
+        if (!name) return;
+        try {
+            await ProjectAPI.createGroup({ projectId, name });
+            await fetchGroupsForProject(projectId);
+        } catch (e: any) {
+            alert(`创建失败: ${e.message}`);
+        }
     };
 
-    const addMember = (projectId: number, groupId: string) => {
-        const current = getGroups(projectId).map(g => {
-            if (g.id === groupId) {
-                return {
-                    ...g,
-                    members: [...g.members, { name: '新成员', avatar: 'https://ui-avatars.com/api/?name=NM&background=random', role: '成员' }]
-                };
-            }
-            return g;
+    const handleRenameGroup = async (projectId: number, group: RoleGroup, newName: string) => {
+        if (!newName || newName === group.name) return;
+        try {
+            await ProjectAPI.editGroup({ groupId: group.roleGroupId, name: newName });
+            await fetchGroupsForProject(projectId);
+        } catch (e: any) {
+            alert(`重命名失败: ${e.message}`);
+        }
+    };
+
+    const handleDeleteGroup = async (projectId: number, groupId: number) => {
+        if (!window.confirm('确认删除该小组吗？')) return;
+        try {
+            await ProjectAPI.deleteGroup({ roleGroupId: groupId });
+            await fetchGroupsForProject(projectId);
+        } catch (e: any) {
+            alert(`删除失败: ${e.message}`);
+        }
+    };
+
+    const handleAddMemberToGroup = async (projectId: number, group: RoleGroup) => {
+        const project = displayProjects.find(p => (p.projectId || p.id) === projectId);
+        const memberIds = (project as any)?.memberIds || [];
+
+        if (memberIds.length === 0) {
+            alert('项目暂无成员可以添加，请先在团队中邀请或在项目中管理成员');
+            return;
+        }
+
+        const selectableMembers = memberIds.map((mid: number) => {
+            const u = resolveUser(mid);
+            return u ? `${u.userId || u.id}: ${u.name}` : `用户#${mid}`;
         });
-        setGroups(projectId, current);
+
+        const choice = window.prompt(`请选择要加入小组的成员ID:\n${selectableMembers.join('\n')}`);
+        if (!choice) return;
+
+        const targetUserId = parseInt(choice);
+        if (isNaN(targetUserId)) {
+            alert('无效的用户ID');
+            return;
+        }
+
+        try {
+            await ProjectAPI.addGroupMember({ groupId: group.roleGroupId, userId: targetUserId });
+            await fetchGroupsForProject(projectId);
+        } catch (e: any) {
+            alert(`添加失败: ${e.message}`);
+        }
     };
 
-    const removeMember = (projectId: number, groupId: string, index: number) => {
-        const current = getGroups(projectId).map(g => {
-            if (g.id === groupId) {
-                const list = [...g.members];
-                list.splice(index, 1);
-                return { ...g, members: list };
-            }
-            return g;
-        });
-        setGroups(projectId, current);
-    };
-
-    const renameGroup = (projectId: number, groupId: string, name: string) => {
-        const current = getGroups(projectId).map(g => (g.id === groupId ? { ...g, name } : g));
-        setGroups(projectId, current);
+    const handleRemoveMemberFromGroup = async (projectId: number, groupId: number, userId: number) => {
+        if (!window.confirm('确认将该成员从小组中移除吗？')) return;
+        try {
+            await ProjectAPI.removeGroupMember({ groupId, userId });
+            await fetchGroupsForProject(projectId);
+        } catch (e: any) {
+            alert(`移除失败: ${e.message}`);
+        }
     };
 
     return (
@@ -258,12 +331,7 @@ export const ProjectTeamPage: React.FC = () => {
                                                     </div>
                                                 </div>
 
-                                                <div className="flex items-center gap-6">
-                                                    <div className="flex flex-col items-end">
-                                                        <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">截止日期</span>
-                                                        <span className="text-sm font-bold text-slate-700">{project.deadline}</span>
-                                                    </div>
-
+                                                <div className="flex items-center gap-4">
                                                     {isExpanded ? <ChevronUp className="text-slate-400" /> : <ChevronDown className="text-slate-400" />}
                                                 </div>
                                             </div>
@@ -281,7 +349,7 @@ export const ProjectTeamPage: React.FC = () => {
                                                             </button>
                                                             {canEdit && (
                                                                 <button
-                                                                    onClick={() => addGroup(pId)}
+                                                                    onClick={() => handleAddGroup(pId)}
                                                                     className="px-4 py-2 bg-white text-blue-600 font-bold rounded-xl border border-blue-200 hover:bg-blue-50 transition-all text-sm"
                                                                 >
                                                                     添加小组
@@ -296,6 +364,38 @@ export const ProjectTeamPage: React.FC = () => {
                                                         </button>
                                                     </div>
 
+                                                    {/* Project Members Section */}
+                                                    <div className="mb-8 text-left">
+                                                        <h4 className="text-lg font-black text-slate-800 mb-4 flex items-center gap-2">
+                                                            <UsersIcon size={20} className="text-blue-500" />
+                                                            项目成员
+                                                        </h4>
+                                                        <div className="bg-slate-50/50 rounded-2xl p-6 border border-slate-100">
+                                                            <div className="flex flex-wrap gap-4">
+                                                                {(project as any).memberIds?.map((mId: number) => {
+                                                                    const u = resolveUser(mId);
+                                                                    if (!u) return null;
+                                                                    return (
+                                                                        <div key={mId} className="flex items-center gap-2 bg-white px-3 py-2 rounded-xl shadow-sm border border-slate-100 hover:border-blue-200 transition-colors">
+                                                                            <img src={u.avatar} alt="" className="w-8 h-8 rounded-lg flex-shrink-0" />
+                                                                            <span className="text-sm font-bold text-slate-700">{u.name}</span>
+                                                                        </div>
+                                                                    );
+                                                                })}
+                                                                <button
+                                                                    onClick={() => {
+                                                                        setInviteProject({ id: pId, name: project.name });
+                                                                        setIsProjectInviteModalOpen(true);
+                                                                    }}
+                                                                    className="flex items-center gap-2 bg-blue-50 px-3 py-2 rounded-xl border border-dashed border-blue-200 text-blue-600 hover:bg-blue-100 transition-all text-sm font-bold"
+                                                                >
+                                                                    <UserPlus size={16} />
+                                                                    邀请成员
+                                                                </button>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+
                                                     {/* Project Roles Division */}
                                                     <div className="mb-8">
                                                         <h4 className="text-lg font-black text-slate-800 mb-4 flex items-center gap-2">
@@ -305,12 +405,21 @@ export const ProjectTeamPage: React.FC = () => {
                                                         <div className="bg-slate-50 rounded-2xl p-6 border border-slate-100">
                                                             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                                                                 {groups.map(group => (
-                                                                    <div key={group.id} className="bg-white p-4 rounded-xl shadow-sm border border-slate-100">
+                                                                    <div key={group.roleGroupId} className="bg-white p-4 rounded-xl shadow-sm border border-slate-100 relative group/card">
+                                                                        {canEdit && (
+                                                                            <button
+                                                                                onClick={() => handleDeleteGroup(pId, group.roleGroupId)}
+                                                                                className="absolute top-2 right-2 text-slate-300 hover:text-red-500 hover:bg-red-50 p-1.5 rounded-lg opacity-0 group-hover/card:opacity-100 transition-all"
+                                                                                title="删除小组"
+                                                                            >
+                                                                                <Trash2 size={14} />
+                                                                            </button>
+                                                                        )}
                                                                         <div className="flex justify-between items-center mb-3 pb-2 border-b border-slate-50">
                                                                             {canEdit ? (
                                                                                 <input
-                                                                                    value={group.name}
-                                                                                    onChange={(e) => renameGroup(pId, group.id, e.target.value)}
+                                                                                    defaultValue={group.name}
+                                                                                    onBlur={(e) => handleRenameGroup(pId, group, e.target.value)}
                                                                                     className="font-bold text-slate-700 text-sm bg-transparent border border-transparent focus:border-blue-200 rounded px-1 -mx-1 outline-none"
                                                                                     placeholder="小组名称"
                                                                                 />
@@ -322,29 +431,32 @@ export const ProjectTeamPage: React.FC = () => {
                                                                             </span>
                                                                         </div>
                                                                         <div className="space-y-2">
-                                                                            {group.members.map((member, idx) => (
-                                                                                <div key={idx} className="flex items-center justify-between gap-2">
-                                                                                    <div className="flex items-center gap-2">
-                                                                                        <img src={member.avatar} alt={member.name} className="w-6 h-6 rounded-lg bg-slate-100" />
-                                                                                        <div className="flex flex-col">
-                                                                                            <span className="text-xs font-bold text-slate-700">{member.name}</span>
-                                                                                            <span className="text-[8px] font-bold text-slate-400 uppercase">{member.role}</span>
+                                                                            {group.members.map((m, idx) => {
+                                                                                const u = resolveUser(m.userId);
+                                                                                return (
+                                                                                    <div key={idx} className="flex items-center justify-between gap-2">
+                                                                                        <div className="flex items-center gap-2">
+                                                                                            <img src={u?.avatar || `https://ui-avatars.com/api/?name=U&background=random`} alt="" className="w-6 h-6 rounded-lg bg-slate-100" />
+                                                                                            <div className="flex flex-col">
+                                                                                                <span className="text-xs font-bold text-slate-700">{u?.name || u?.username || `用户#${m.userId}`}</span>
+                                                                                                <span className="text-[8px] font-bold text-slate-400 uppercase">{m.role}</span>
+                                                                                            </div>
                                                                                         </div>
+                                                                                        {canEdit && (
+                                                                                            <button
+                                                                                                onClick={() => handleRemoveMemberFromGroup(pId, group.roleGroupId, m.userId)}
+                                                                                                className="p-1.5 rounded-lg border border-slate-200 text-slate-400 hover:text-red-500 hover:border-red-200"
+                                                                                            >
+                                                                                                <X size={12} />
+                                                                                            </button>
+                                                                                        )}
                                                                                     </div>
-                                                                                    {canEdit && (
-                                                                                        <button
-                                                                                            onClick={() => removeMember(pId, group.id, idx)}
-                                                                                            className="p-1.5 rounded-lg border border-slate-200 text-slate-400 hover:text-red-500 hover:border-red-200"
-                                                                                        >
-                                                                                            <X size={12} />
-                                                                                        </button>
-                                                                                    )}
-                                                                                </div>
-                                                                            ))}
+                                                                                );
+                                                                            })}
                                                                         </div>
                                                                         {canEdit && (
                                                                             <button
-                                                                                onClick={() => addMember(pId, group.id)}
+                                                                                onClick={() => handleAddMemberToGroup(pId, group)}
                                                                                 className="w-full py-2 mt-3 border-2 border-dashed border-slate-100 rounded-xl text-slate-400 text-xs font-bold hover:border-blue-200 hover:text-blue-500 hover:bg-blue-50/50 transition-all"
                                                                             >
                                                                                 添加成员
@@ -431,14 +543,13 @@ export const ProjectTeamPage: React.FC = () => {
 
                             <div className="flex flex-col gap-6">
                                 {displayTeams.map(team => {
-                                    const myId = Number(state.currentUser?.userId);
+                                    const myId = Number(state.currentUser?.userId || state.currentUser?.id || 0);
                                     const tId = Number(team.teamId || team.id);
                                     const isExpanded = expandedTeams[tId];
-                                    const ownerId = Number(team.creatorId || team.ownerId);
-                                    const creator = resolveUser(ownerId);
+                                    const ownerId = Number(team.creatorId || team.ownerId || 0);
                                     const adminIds = (team.adminIds || []).map(id => Number(id));
                                     const memberIds = (team.memberIds || []).map(id => Number(id));
-                                    const isTeamAdmin = adminIds.includes(myId) || (ownerId === myId);
+                                    const isTeamAdmin = (myId > 0) && (adminIds.includes(myId) || (ownerId === myId));
 
                                     return (
                                         <div key={team.id} className={`bg-white rounded-[2rem] border transition-all duration-300 overflow-hidden ${isExpanded ? 'shadow-xl border-indigo-200 ring-1 ring-indigo-100' : 'shadow-sm border-slate-100 hover:shadow-md'}`}>
@@ -535,8 +646,8 @@ export const ProjectTeamPage: React.FC = () => {
                                                                 });
                                                             })().map((id, idx) => {
                                                                 const user = resolveUser(id);
-                                                                const isAdmin = (adminIds || []).some(aid => Number(aid) === Number(id));
-                                                                const isCreator = Number(team.creatorId || team.ownerId) === Number(id);
+                                                                const isAdmin = (adminIds || []).some(aid => Number(aid) === Number(id)) || user?.teamRole === 'ADMIN' || user?.teamRole === 'MANAGER';
+                                                                const isCreator = (Number(team.creatorId || team.ownerId || 0) === Number(id)) || user?.teamRole === 'CREATOR';
                                                                 if (!id && !user) return null;
                                                                 return (
                                                                     <div key={idx} className="bg-white p-4 rounded-xl shadow-sm border border-slate-100 flex items-center justify-between">
@@ -559,9 +670,9 @@ export const ProjectTeamPage: React.FC = () => {
                                                                                     'MEMBER': { label: '成员', color: 'text-slate-500', bg: 'bg-slate-50', border: 'border-slate-200' }
                                                                                 };
                                                                                 const s = roleMap[role as string] || roleMap['MEMBER'];
-                                                                                const myId = Number(state.currentUser?.userId);
-                                                                                const amICreator = Number(team.creatorId || team.ownerId) === myId;
-                                                                                const amIAdmin = (adminIds || []).some(aid => Number(aid) === myId);
+                                                                                const myId = Number(state.currentUser?.userId || state.currentUser?.id || 0);
+                                                                                const amICreator = (myId > 0) && Number(team.creatorId || team.ownerId || 0) === myId;
+                                                                                const amIAdmin = (myId > 0) && (adminIds.includes(myId) || amICreator);
 
                                                                                 const targetRequestMemberId = Number(user?.memberId || id);
 
@@ -628,7 +739,6 @@ export const ProjectTeamPage: React.FC = () => {
                                 projectId: projectId,
                                 name: data.name,
                                 description: data.description,
-                                deadline: data.deadline,
                                 teamId: data.teamId,
                                 status: 'Active',
                                 memberIds: [state.currentUser?.userId || 0],
@@ -645,6 +755,19 @@ export const ProjectTeamPage: React.FC = () => {
                 />
             )}
 
+            {isProjectInviteModalOpen && inviteProject && (
+                <InviteProjectMemberModal
+                    projectId={inviteProject.id}
+                    projectName={inviteProject.name}
+                    teamId={displayProjects.find(p => (p.projectId || p.id) === inviteProject.id)?.teamId || 0}
+                    onClose={() => {
+                        setIsProjectInviteModalOpen(false);
+                        setInviteProject(null);
+                        refreshData?.();
+                    }}
+                />
+            )}
+
             {isTeamModalOpen && (
                 <CreateTeamModal
                     onClose={() => setIsTeamModalOpen(false)}
@@ -654,10 +777,11 @@ export const ProjectTeamPage: React.FC = () => {
 
                             // Immediately fetch actual members to sync state with backend
                             const membersRes = await TeamAPI.members(teamId);
-                            const actualMembers = membersRes.data || [];
+                            const actualMembers = Array.isArray(membersRes) ? membersRes : [];
+
                             const memberIds = actualMembers.map((m: any) => m.userId || m.id);
                             const adminIds = actualMembers
-                                .filter((m: any) => m.teamRole === 'CREATOR' || m.teamRole === 'ADMIN')
+                                .filter((m: any) => m.teamRole === 'CREATOR' || m.teamRole === 'ADMIN' || m.teamRole === 'MANAGER')
                                 .map((m: any) => m.userId || m.id);
 
                             const newTeam: Team = {
@@ -666,8 +790,8 @@ export const ProjectTeamPage: React.FC = () => {
                                 name: data.name,
                                 description: data.description || '',
                                 ownerId: state.currentUser?.userId || state.currentUser?.id || 0,
-                                memberIds: memberIds.length > 0 ? memberIds : [state.currentUser?.userId || 0],
-                                adminIds: adminIds.length > 0 ? adminIds : [state.currentUser?.userId || 0]
+                                memberIds: memberIds.length > 0 ? memberIds : [state.currentUser?.userId || state.currentUser?.id || 0],
+                                adminIds: adminIds.length > 0 ? adminIds : [state.currentUser?.userId || state.currentUser?.id || 0]
                             };
                             setState(prev => ({ ...prev, teams: [...prev.teams, newTeam] }));
                         } catch (e) {

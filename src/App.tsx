@@ -59,7 +59,7 @@ const App: React.FC = () => {
                   ...m,
                   userId: mid,
                   id: mid,
-                  name: m.name || m.realname || m.username || `用户#${mid}`,
+                  name: m.name || m.realname || m.username || (m.user && (m.user.name || m.user.username)) || `用户#${mid}`,
                   avatar: m.avatar || m.avatarUrl || `https://ui-avatars.com/api/?name=${m.username || 'U'}&background=random`
                 };
                 const existingIdx = allUsers.findIndex(u => Number(u.userId || u.id) === mid);
@@ -68,28 +68,41 @@ const App: React.FC = () => {
                 } else {
                   allUsers.push(normalizedUser);
                 }
+
+                if (user && normalizedUser.username === user.username &&
+                  (Number(user.userId || user.id || 0) > 1000000 || !user.userId)) {
+                  console.log(`[App] Healing user ID from ${user.userId} to ${mid} based on team membership`);
+                  user.userId = mid;
+                  user.id = mid;
+                  // Also update normalized version in allUsers if it was already pushed
+                  const uIdx = allUsers.findIndex(u => u.username === user.username);
+                  if (uIdx > -1) {
+                    allUsers[uIdx] = { ...allUsers[uIdx], userId: mid, id: mid };
+                  }
+                }
               });
 
-              const teamOwnerId = Number(members.find((m: any) => m.teamRole === 'CREATOR')?.userId || teams[i].creatorId || teams[i].ownerId);
+              const teamCreatorObj = members.find((m: any) => m.teamRole === 'CREATOR');
+              const teamOwnerId = Number(teamCreatorObj?.userId || teamCreatorObj?.memberId || teamCreatorObj?.id || teams[i].creatorId || teams[i].ownerId || 0);
               teams[i] = {
                 ...teams[i],
                 creatorId: teamOwnerId,
                 ownerId: teamOwnerId,
                 memberIds: members.map((m: any) => Number(m.userId || m.id)),
                 adminIds: members
-                  .filter((m: any) => m.teamRole === 'CREATOR' || m.teamRole === 'ADMIN' || m.teamRole === 'MANAGER')
+                  .filter((m: any) => ['CREATOR', 'ADMIN', 'MANAGER'].includes(String(m.teamRole).toUpperCase()))
                   .map((m: any) => Number(m.userId || m.id)),
               };
             }
           } catch (e) {
-            console.warn('Failed to fetch members for team', teams[i].teamId);
+            console.warn('Failed to fetch members for team', teams[i].teamId || teams[i].id);
           }
         }
 
         // Fetch projects for all teams the user belongs to
         for (const team of teams) {
           try {
-            const projRes = await ProjectAPI.list(team.teamId, 1, 100);
+            const projRes = await ProjectAPI.list(team.teamId || team.id, 1, 100);
             if (projRes.items) {
               for (const proj of projRes.items) {
                 const pId = proj.projectId || proj.id;
@@ -103,11 +116,37 @@ const App: React.FC = () => {
                       allTasks = [...allTasks, ...taskRes.items];
                     }
                   } catch (e) { }
+
+                  // Fetch members for each project
+                  try {
+                    const memberRes = await ProjectAPI.listMember(pId);
+                    if (memberRes.items) {
+                      const memberIds = memberRes.items.map((m: any) => Number(m.userId || m.id));
+                      uniqueProjects.set(pId, {
+                        ...proj,
+                        memberIds: memberIds
+                      });
+
+                      // Also ensure these users exist in allUsers
+                      for (const m of memberRes.items) {
+                        const mid = Number(m.userId || m.id);
+                        if (!allUsers.find(u => Number(u.userId || u.id) === mid)) {
+                          allUsers.push({
+                            ...m,
+                            userId: mid,
+                            id: mid,
+                            name: m.name || m.realname || m.username || (m.user && (m.user.name || m.user.username)) || `用户#${mid}`,
+                            avatar: m.avatar || m.avatarUrl || `https://ui-avatars.com/api/?name=${m.username || 'U'}&background=random`
+                          });
+                        }
+                      }
+                    }
+                  } catch (e) { }
                 }
               }
             }
           } catch (e) {
-            console.warn('Failed to fetch projects for team', team.teamId);
+            console.warn('Failed to fetch projects for team', team.teamId || team.id);
           }
         }
 
