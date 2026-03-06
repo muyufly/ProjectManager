@@ -28,6 +28,8 @@ export interface User {
   createdAt?: string;
   updatedAt?: string;
   deletedAt?: string;
+  teamRole?: string; // Role specific to a team context (e.g., CREATOR, MEMBER)
+  memberId?: number; // Unique ID for team membership, used for management API calls
   // Legacy fields for UI compatibility
   name: string;
   avatar: string;

@@ -82,10 +82,13 @@ export const UserAPI = {
       finalAvatar = 'https://' + finalAvatar.split('https://').pop();
     }
 
+    const finalId = data.userId || data.id || (data.sduId ? parseInt(data.sduId.replace(/\D/g, '')) : 0) ||
+      (data.username ? Math.abs(data.username.split('').reduce((a: number, b: string) => ((a << 5) - a) + b.charCodeAt(0), 0)) : 9999);
+
     return {
       ...data,
-      userId: data.userId || data.id || (data.sduId ? parseInt(data.sduId.replace(/\D/g, '')) : 0),
-      id: data.id || data.userId || 0,
+      userId: finalId,
+      id: finalId,
       name: data.realname || data.username || '未知用户',
       avatar: finalAvatar
     } as User;
@@ -135,10 +138,10 @@ export const TeamAPI = {
   removeMember: (data: { teamId: number; memberId: number }) =>
     request<string>('/team/removeMember', { method: 'POST', body: JSON.stringify(data) }),
 
-  addAdmin: (data: { teamId: number; adminId: number }) =>
+  addAdmin: (data: { teamId: number; memberId: number }) =>
     request<string>('/team/addAdmin', { method: 'POST', body: JSON.stringify(data) }),
 
-  removeAdmin: (data: { teamId: number; adminId: number }) =>
+  removeAdmin: (data: { teamId: number; memberId: number }) =>
     request<string>('/team/removeAdmin', { method: 'POST', body: JSON.stringify(data) }),
 
   disband: (data: { teamId: number }) =>
@@ -154,12 +157,13 @@ export const TeamAPI = {
         finalAvatar = 'https://' + finalAvatar.split('https://').pop();
       }
 
-      // Robust ID resolution: prefer userId/id, fallback to hashed username or sduId
+      // Robust ID resolution: prefer userId/id, fallback to sduId, then hashed username
       const identifiedId = u.userId || u.id || (u.sduId ? parseInt(u.sduId.replace(/\D/g, '')) : 0) ||
-        (u.username ? u.username.split('').reduce((a: number, b: string) => ((a << 5) - a) + b.charCodeAt(0), 0) : 0);
+        (u.username ? Math.abs(u.username.split('').reduce((a: number, b: string) => ((a << 5) - a) + b.charCodeAt(0), 0)) : 9999);
 
       return {
         ...u,
+        memberId: Number(u.memberId), // Store specific ID for request use
         userId: identifiedId,
         id: identifiedId,
         name: u.realname || u.username || '用户',

@@ -62,18 +62,23 @@ const App: React.FC = () => {
                   name: m.name || m.realname || m.username || `用户#${mid}`,
                   avatar: m.avatar || m.avatarUrl || `https://ui-avatars.com/api/?name=${m.username || 'U'}&background=random`
                 };
-                if (!allUsers.find(u => Number(u.userId || u.id) === mid)) {
+                const existingIdx = allUsers.findIndex(u => Number(u.userId || u.id) === mid);
+                if (existingIdx > -1) {
+                  allUsers[existingIdx] = { ...allUsers[existingIdx], ...normalizedUser };
+                } else {
                   allUsers.push(normalizedUser);
                 }
               });
 
+              const teamOwnerId = Number(members.find((m: any) => m.teamRole === 'CREATOR')?.userId || teams[i].creatorId || teams[i].ownerId);
               teams[i] = {
                 ...teams[i],
+                creatorId: teamOwnerId,
+                ownerId: teamOwnerId,
                 memberIds: members.map((m: any) => Number(m.userId || m.id)),
                 adminIds: members
-                  .filter((m: any) => m.teamRole === 'CREATOR' || m.teamRole === 'ADMIN')
+                  .filter((m: any) => m.teamRole === 'CREATOR' || m.teamRole === 'ADMIN' || m.teamRole === 'MANAGER')
                   .map((m: any) => Number(m.userId || m.id)),
-                ownerId: Number(members.find((m: any) => m.teamRole === 'CREATOR')?.userId || teams[i].ownerId)
               };
             }
           } catch (e) {

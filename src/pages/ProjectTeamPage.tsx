@@ -1,6 +1,6 @@
 import React, { useContext, useState } from 'react';
 import { AppContext } from '../constants';
-import { LayoutGrid, Users as UsersIcon, FolderPlus, Plus, ArrowRight, ChevronDown, ChevronUp, Clock, ChevronRight, X } from 'lucide-react';
+import { LayoutGrid, Users as UsersIcon, FolderPlus, Plus, ArrowRight, ChevronDown, ChevronUp, Clock, ChevronRight, X, Trash2, LogOut, XCircle, ShieldAlert, UserMinus } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import type { Project, Team, Task } from '../types';
 import { TaskStatus } from '../types';
@@ -20,7 +20,7 @@ interface RoleGroup {
 }
 
 export const ProjectTeamPage: React.FC = () => {
-    const { state, setState } = useContext(AppContext);
+    const { state, setState, refreshData } = useContext(AppContext);
     const { tasks, users, teams } = state;
     const navigate = useNavigate();
     const [activeTab, setActiveTab] = useState<'projects' | 'teams'>('projects');
@@ -55,6 +55,62 @@ export const ProjectTeamPage: React.FC = () => {
 
     const toggleTeamExpand = (teamId: number) => {
         setExpandedTeams(prev => ({ ...prev, [teamId]: !prev[teamId] }));
+    };
+
+    const handleManageAdmin = async (team: Team, requestMemberId: number, currentIsAdmin: boolean, targetUserId: number) => {
+        const isCreatorOfTeam = Number(team.creatorId || team.ownerId) === Number(state.currentUser?.userId);
+        if (!isCreatorOfTeam) return;
+
+        // Skip if target is the creator/owner (they can't be modified)
+        if (targetUserId === Number(team.creatorId || team.ownerId)) return;
+
+        const action = currentIsAdmin ? '移除管理员权限' : '设为管理员';
+        if (!window.confirm(`确认将该成员${action}吗？`)) return;
+
+        try {
+            if (currentIsAdmin) {
+                await TeamAPI.removeAdmin({ teamId: Number(team.id || team.teamId), memberId: requestMemberId });
+            } else {
+                await TeamAPI.addAdmin({ teamId: Number(team.id || team.teamId), memberId: requestMemberId });
+            }
+            if (refreshData) await refreshData();
+        } catch (e: any) {
+            alert(`操纵失败: ${e.message}`);
+        }
+    };
+
+    const handleRemoveMember = async (team: Team, memberId: number) => {
+        if (!window.confirm('确认将该成员移出团队吗？')) return;
+        try {
+            await TeamAPI.removeMember({ teamId: Number(team.id || team.teamId), memberId });
+            if (refreshData) await refreshData();
+        } catch (e: any) {
+            alert(`移除失败: ${e.message}`);
+        }
+    };
+
+    const handleQuitTeam = async (teamId: number) => {
+        if (!window.confirm('确认退出该团队吗？退出后将无法查看内部项目。')) return;
+        try {
+            await TeamAPI.quit({ teamId });
+            if (refreshData) await refreshData();
+        } catch (e: any) {
+            alert(`退出失败: ${e.message}`);
+        }
+    };
+
+    const handleDisbandTeam = async (teamId: number) => {
+        if (!window.confirm('【确认 1/3】您真的要解散这个团队吗？所有数据将永久清除。')) return;
+        const confirmText = window.prompt('【确认 2/3】解散团队不可撤销，请手动输入“解散团队”以确认');
+        if (confirmText !== '解散团队') return;
+        if (!window.confirm('【确认 3/3】最后一次机会：真的要彻底删除所有相关数据吗？')) return;
+
+        try {
+            await TeamAPI.disband({ teamId });
+            if (refreshData) await refreshData();
+        } catch (e: any) {
+            alert(`解散失败: ${e.message}`);
+        }
     };
 
     const resolveUser = (id?: number | string) => {
@@ -375,12 +431,14 @@ export const ProjectTeamPage: React.FC = () => {
 
                             <div className="flex flex-col gap-6">
                                 {displayTeams.map(team => {
-                                    const tId = team.teamId || team.id;
+                                    const myId = Number(state.currentUser?.userId);
+                                    const tId = Number(team.teamId || team.id);
                                     const isExpanded = expandedTeams[tId];
-                                    const creator = resolveUser(team.creatorId || team.ownerId);
-                                    const adminIds = team.adminIds || [];
-                                    const memberIds = team.memberIds || [];
-                                    const isTeamAdmin = adminIds.includes(state.currentUser?.userId || 0) || (team.ownerId === state.currentUser?.userId);
+                                    const ownerId = Number(team.creatorId || team.ownerId);
+                                    const creator = resolveUser(ownerId);
+                                    const adminIds = (team.adminIds || []).map(id => Number(id));
+                                    const memberIds = (team.memberIds || []).map(id => Number(id));
+                                    const isTeamAdmin = adminIds.includes(myId) || (ownerId === myId);
 
                                     return (
                                         <div key={team.id} className={`bg-white rounded-[2rem] border transition-all duration-300 overflow-hidden ${isExpanded ? 'shadow-xl border-indigo-200 ring-1 ring-indigo-100' : 'shadow-sm border-slate-100 hover:shadow-md'}`}>
@@ -408,25 +466,51 @@ export const ProjectTeamPage: React.FC = () => {
                                                         <div className="text-xs font-bold text-slate-400 uppercase tracking-wider">成员数</div>
                                                         <div className="text-sm font-bold text-slate-700">{memberIds.length}</div>
                                                     </div>
-                                                    <button
-                                                        onClick={(e) => {
-                                                            e.stopPropagation();
-                                                            setInviteTeam({ id: tId, name: team.name });
-                                                            setIsInviteModalOpen(true);
-                                                        }}
-                                                        className="p-3 bg-indigo-50 text-indigo-600 rounded-xl hover:bg-indigo-600 hover:text-white transition-all shadow-sm"
-                                                        title="邀请成员"
-                                                    >
-                                                        <UserPlus size={18} />
-                                                    </button>
+                                                    <div className="flex gap-2">
+                                                        <button
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                setInviteTeam({ id: tId, name: team.name });
+                                                                setIsInviteModalOpen(true);
+                                                            }}
+                                                            className="p-3 bg-indigo-50 text-indigo-600 rounded-xl hover:bg-indigo-600 hover:text-white transition-all shadow-sm"
+                                                            title="邀请成员"
+                                                        >
+                                                            <UserPlus size={18} />
+                                                        </button>
+                                                        <button
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                handleQuitTeam(tId);
+                                                            }}
+                                                            className="p-3 bg-slate-50 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-xl transition-all"
+                                                            title="退出团队"
+                                                        >
+                                                            <LogOut size={18} />
+                                                        </button>
+                                                        {Number(team.creatorId || team.ownerId) === Number(state.currentUser?.userId) && (
+                                                            <button
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation();
+                                                                    handleDisbandTeam(tId);
+                                                                }}
+                                                                className="p-3 bg-red-50 text-red-400 hover:text-red-600 hover:bg-red-100 rounded-xl transition-all"
+                                                                title="解散团队"
+                                                            >
+                                                                <XCircle size={18} />
+                                                            </button>
+                                                        )}
+                                                    </div>
                                                     {isExpanded ? <ChevronUp className="text-slate-400" /> : <ChevronDown className="text-slate-400" />}
                                                 </div>
                                             </div>
 
                                             {isExpanded && (
-                                                <div className="px-8 pb-8 animate-in fade-in slide-in-from-top-4 duration-300 border-t border-slate-50">
+                                                <div className="px-8 pb-8 animate-in fade-in slide-in-from-top-4 duration-300 border-t border-slate-50 text-left">
                                                     <div className="mb-2">
-                                                        <h4 className="text-lg font-black text-slate-800 mb-4">团队成员</h4>
+                                                        <div className="flex items-center justify-between mb-4">
+                                                            <h4 className="text-lg font-black text-slate-800">团队成员</h4>
+                                                        </div>
                                                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                                                             {memberIds.length === 0 && (
                                                                 <div className="col-span-full py-10 text-center bg-slate-50/50 rounded-3xl border border-dashed border-slate-200">
@@ -465,9 +549,49 @@ export const ProjectTeamPage: React.FC = () => {
                                                                                 <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{user?.role || (isAdmin ? '管理员' : '成员')}</span>
                                                                             </div>
                                                                         </div>
-                                                                        <div className="flex items-center gap-1">
-                                                                            {isCreator && <span className="text-[10px] font-black text-amber-600 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded">创建者</span>}
-                                                                            {isAdmin && <span className="text-[10px] font-black text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded">管理员</span>}
+                                                                        <div className="flex items-center gap-2">
+                                                                            {(() => {
+                                                                                const role = isCreator ? 'CREATOR' : (isAdmin ? 'ADMIN' : (user?.teamRole || 'MEMBER'));
+                                                                                const roleMap: Record<string, { label: string, color: string, bg: string, border: string }> = {
+                                                                                    'CREATOR': { label: '创建者', color: 'text-amber-600', bg: 'bg-amber-50', border: 'border-amber-200' },
+                                                                                    'ADMIN': { label: '管理员', color: 'text-emerald-700', bg: 'bg-emerald-50', border: 'border-emerald-200' },
+                                                                                    'MANAGER': { label: '管理员', color: 'text-emerald-700', bg: 'bg-emerald-50', border: 'border-emerald-200' },
+                                                                                    'MEMBER': { label: '成员', color: 'text-slate-500', bg: 'bg-slate-50', border: 'border-slate-200' }
+                                                                                };
+                                                                                const s = roleMap[role as string] || roleMap['MEMBER'];
+                                                                                const myId = Number(state.currentUser?.userId);
+                                                                                const amICreator = Number(team.creatorId || team.ownerId) === myId;
+                                                                                const amIAdmin = (adminIds || []).some(aid => Number(aid) === myId);
+
+                                                                                const targetRequestMemberId = Number(user?.memberId || id);
+
+                                                                                return (
+                                                                                    <div className="flex items-center gap-2">
+                                                                                        <span
+                                                                                            className={`text-[10px] font-black ${s.color} ${s.bg} border ${s.border} px-2 py-0.5 rounded ${amICreator ? 'cursor-pointer hover:scale-105 active:scale-95 transition-all shadow-sm hover:shadow-md' : ''}`}
+                                                                                            onClick={(e) => {
+                                                                                                e.stopPropagation();
+                                                                                                handleManageAdmin(team, targetRequestMemberId, isAdmin, id);
+                                                                                            }}
+                                                                                            title={amICreator ? "点击切换管理员权限" : ""}
+                                                                                        >
+                                                                                            {s.label}
+                                                                                        </span>
+                                                                                        {((amICreator || amIAdmin) && id !== myId && !isCreator) && (
+                                                                                            <button
+                                                                                                onClick={(e) => {
+                                                                                                    e.stopPropagation();
+                                                                                                    handleRemoveMember(team, targetRequestMemberId);
+                                                                                                }}
+                                                                                                className="p-1.5 text-slate-300 hover:text-red-500 rounded-lg hover:bg-red-50 transition-all"
+                                                                                                title="移出团队"
+                                                                                            >
+                                                                                                <UserMinus size={14} />
+                                                                                            </button>
+                                                                                        )}
+                                                                                    </div>
+                                                                                );
+                                                                            })()}
                                                                         </div>
                                                                     </div>
                                                                 );
