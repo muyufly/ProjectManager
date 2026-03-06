@@ -5,7 +5,9 @@ import { useNavigate } from 'react-router-dom';
 import type { Project, Team, Task } from '../types';
 import { TaskStatus } from '../types';
 import { CreateTaskModal } from '../components/CreateTaskModal';
-import { TaskAPI } from '../services/api';
+import { CreateProjectModal } from '../components/CreateProjectModal';
+import { CreateTeamModal } from '../components/CreateTeamModal';
+import { TaskAPI, ProjectAPI, TeamAPI } from '../services/api';
 import { TaskDetailModal } from '../components/TaskDetailModal';
 
 // Mock Role Groups (Same as in TasksPage)
@@ -17,12 +19,14 @@ interface RoleGroup {
 
 export const ProjectTeamPage: React.FC = () => {
     const { state, setState } = useContext(AppContext);
-    const { tasks, users } = state;
+    const { tasks, users, teams } = state;
     const navigate = useNavigate();
     const [activeTab, setActiveTab] = useState<'projects' | 'teams'>('projects');
     const [expandedProjects, setExpandedProjects] = useState<Record<number, boolean>>({});
     const [expandedTeams, setExpandedTeams] = useState<Record<number, boolean>>({});
     const [isTaskModalOpen, setIsTaskModalOpen] = useState(false);
+    const [isProjectModalOpen, setIsProjectModalOpen] = useState(false);
+    const [isTeamModalOpen, setIsTeamModalOpen] = useState(false);
     const [activeProjectId, setActiveProjectId] = useState<number | null>(null);
     const [selectedTask, setSelectedTask] = useState<Task | null>(null);
     const [editMode, setEditMode] = useState<Record<number, boolean>>({});
@@ -103,7 +107,7 @@ export const ProjectTeamPage: React.FC = () => {
     };
 
     return (
-        <div className="flex gap-8 h-full min-h-0 min-w-0 overflow-hidden">
+        <div className="flex gap-8 h-full min-h-0 min-w-0">
             <div className="flex-1 space-y-8 overflow-y-auto pr-2 pb-10 scrollbar-thin scrollbar-thumb-slate-200">
                 {/* Header Section */}
                 <div className="flex items-center justify-between">
@@ -142,7 +146,10 @@ export const ProjectTeamPage: React.FC = () => {
                                     <LayoutGrid className="text-blue-500" size={24} />
                                     项目列表
                                 </h2>
-                                <button className="px-4 py-2 bg-blue-600 text-white rounded-xl text-sm font-bold flex items-center gap-2 hover:bg-blue-700 transition-colors shadow-lg shadow-blue-200">
+                                <button
+                                    onClick={() => setIsProjectModalOpen(true)}
+                                    className="px-4 py-2 bg-blue-600 text-white rounded-xl text-sm font-bold flex items-center gap-2 hover:bg-blue-700 transition-colors shadow-lg shadow-blue-200"
+                                >
                                     <Plus size={18} /> 新建项目
                                 </button>
                             </div>
@@ -351,7 +358,10 @@ export const ProjectTeamPage: React.FC = () => {
                                     <UsersIcon className="text-indigo-500" size={24} />
                                     团队列表
                                 </h2>
-                                <button className="px-4 py-2 bg-indigo-600 text-white rounded-xl text-sm font-bold flex items-center gap-2 hover:bg-indigo-700 transition-colors shadow-lg shadow-indigo-200">
+                                <button
+                                    onClick={() => setIsTeamModalOpen(true)}
+                                    className="px-4 py-2 bg-indigo-600 text-white rounded-xl text-sm font-bold flex items-center gap-2 hover:bg-indigo-700 transition-colors shadow-lg shadow-indigo-200"
+                                >
                                     <Plus size={18} /> 新建团队
                                 </button>
                             </div>
@@ -504,6 +514,57 @@ export const ProjectTeamPage: React.FC = () => {
                     />
                 )}
             </div>
+
+            {isProjectModalOpen && (
+                <CreateProjectModal
+                    onClose={() => setIsProjectModalOpen(false)}
+                    onSubmit={async (data) => {
+                        try {
+                            const projectId = await ProjectAPI.create(data);
+                            const newProject: Project = {
+                                id: projectId,
+                                projectId: projectId,
+                                name: data.name,
+                                description: data.description,
+                                deadline: data.deadline,
+                                teamId: data.teamId,
+                                status: 'Active',
+                                memberIds: [state.currentUser?.userId || 0],
+                                managerId: state.currentUser?.userId || 0,
+                                creatorId: state.currentUser?.userId || 0,
+                                createdAt: new Date().toISOString()
+                            };
+                            setState(prev => ({ ...prev, projects: [...prev.projects, newProject] }));
+                        } catch (e) {
+                            alert('创建项目失败');
+                        }
+                    }}
+                    teams={teams.map(t => ({ id: t.teamId || t.id, name: t.name }))}
+                />
+            )}
+
+            {isTeamModalOpen && (
+                <CreateTeamModal
+                    onClose={() => setIsTeamModalOpen(false)}
+                    onSubmit={async (data) => {
+                        try {
+                            const teamId = await TeamAPI.create(data);
+                            const newTeam: Team = {
+                                id: teamId,
+                                teamId: teamId,
+                                name: data.name,
+                                description: data.description || '',
+                                ownerId: state.currentUser?.userId || 0,
+                                memberIds: [state.currentUser?.userId || 0],
+                                adminIds: [state.currentUser?.userId || 0]
+                            };
+                            setState(prev => ({ ...prev, teams: [...prev.teams, newTeam] }));
+                        } catch (e) {
+                            alert('创建团队失败');
+                        }
+                    }}
+                />
+            )}
         </div>
     );
 };

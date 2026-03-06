@@ -26,7 +26,7 @@ export const CreateTeamModal: React.FC<CreateTeamModalProps> = ({ onClose, onSub
     };
 
     return (
-        <div className="fixed inset-0 bg-slate-800/50 flex items-center justify-center z-50 p-4">
+        <div className="fixed inset-0 bg-slate-800/50 flex items-center justify-center z-[100] p-4">
             <div className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden">
                 <div className="flex items-center justify-between p-6 border-b border-slate-100">
                     <h2 className="text-xl font-bold text-slate-800">创建新团队</h2>
