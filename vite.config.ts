@@ -15,7 +15,20 @@ export default defineConfig({
     proxy: {
       '/api': {
         target: 'https://project.foofish.work',
-        changeOrigin: true
+        changeOrigin: true,
+
+      },
+      '/oss-proxy': {
+        target: 'https://projectmgr.sgp1.digitaloceanspaces.com',
+        changeOrigin: true,
+        secure: false,
+        rewrite: (path) => path.replace(/^\/oss-proxy/, '')
+      },
+      '/oss-cdn-proxy': {
+        target: 'https://projectmgr.sgp1.cdn.digitaloceanspaces.com',
+        changeOrigin: true,
+        secure: false,
+        rewrite: (path) => path.replace(/^\/oss-cdn-proxy/, '')
       }
     }
   }

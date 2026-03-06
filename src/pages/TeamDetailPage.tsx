@@ -18,10 +18,7 @@ export const TeamDetailPage: React.FC = () => {
     const project = projects.find(p => p.teamId === tId);
 
     if (!team) return (
-        <div className="flex gap-6 h-full">
-            <LeftPanel />
-            <div className="flex-1 flex items-center justify-center text-slate-400">未找到团队</div>
-        </div>
+        <div className="flex-1 flex items-center justify-center text-slate-400">未找到团队</div>
     );
 
     const isOwner = currentUser?.userId === team.ownerId;
