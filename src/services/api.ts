@@ -72,50 +72,56 @@ export const AuthAPI = {
 /**
  * User API
  */
+const normalizeUser = (data: any): User => {
+  if (!data) return {} as User;
+
+  // Auto-repair corrupted URL (fixes the double/triple https:// duplication)
+  let finalAvatar = data.avatarUrl || data.avatar || null;
+  if (typeof finalAvatar === 'string' && finalAvatar.includes('https://')) {
+    const parts = finalAvatar.split('https://');
+    finalAvatar = 'https://' + parts[parts.length - 1];
+  }
+
+  // Per user, userId and memberId are the same absolute number in this project
+  const finalId = Number(data.userId || data.memberId || data.id || 0);
+
+  // Map roles to human readable Chinese if applicable
+  let finalRole = data.role || data.teamRole || '普通成员';
+  if (finalRole === 'ADMIN' || finalRole === 'Admin' || finalRole === 'MANAGER') finalRole = '管理员';
+  if (finalRole === 'USER' || finalRole === 'Member' || finalRole === 'NORMAL') finalRole = '成员';
+  if (finalRole === 'CREATOR') finalRole = '创建者';
+
+  const name = data.name || data.realname || data.username || (data.user && (data.user.name || data.user.username || data.user.realname)) || `用户#${finalId}`;
+
+  return {
+    ...data,
+    userId: finalId,
+    id: finalId,
+    name: name,
+    avatar: finalAvatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(data.username || 'U')}&background=random`,
+    avatarUrl: finalAvatar,
+    role: finalRole
+  } as User;
+};
+
 export const UserAPI = {
   getInfo: async () => {
     const data = await request<any>('/user/info');
-
-    // Auto-repair corrupted URL (fixes the double https:// duplication)
-    let finalAvatar = data.avatarUrl || data.avatar || null;
-    if (typeof finalAvatar === 'string' && finalAvatar.includes('https://')) {
-      const parts = finalAvatar.split('https://');
-      finalAvatar = 'https://' + parts[parts.length - 1];
-    }
-
-    // Prioritize userId/id/memberId. Only hash if absolutely nothing found.
-    const finalId = Number(data.userId || data.id || data.memberId || 0) ||
-      (data.sduId ? parseInt(data.sduId.replace(/\D/g, '')) : 0) ||
-      (data.username ? Math.abs(data.username.split('').reduce((a: number, b: string) => ((a << 5) - a) + b.charCodeAt(0), 0)) : 9999);
-
-    return {
-      ...data,
-      userId: finalId,
-      id: finalId,
-      name: data.realname || data.username || '未知用户',
-      avatar: finalAvatar
-    } as User;
+    return normalizeUser(data);
   },
 
   editInfo: (data: { username: string; email: string; department: string; role: string; avatarUrl: string | null }) =>
     request<any>('/user/info', { method: 'POST', body: JSON.stringify(data) }),
 
-  getInfoById: (id: string | number) => request<any>(`/user/info?userId=${id}`),
+  getInfoById: async (id: string | number) => {
+    const data = await request<any>(`/user/infoById?userId=${id}`);
+    return normalizeUser(data);
+  },
+
   search: async (keyword: string, page: number = 1, size: number = 10) => {
     const res = await request<any>(`/user/search?keyword=${keyword}&page=${page}&size=${size}`);
     if (res.items) {
-      res.items = res.items.map((u: any) => {
-        let finalAvatar = u.avatarUrl || u.avatar || null;
-        if (typeof finalAvatar === 'string' && finalAvatar.includes('https://') && finalAvatar.lastIndexOf('https://') > 0) {
-          finalAvatar = 'https://' + finalAvatar.split('https://').pop();
-        }
-        return {
-          ...u,
-          userId: u.userId || u.id || 0,
-          name: u.realname || u.username || '用户',
-          avatar: finalAvatar
-        };
-      });
+      res.items = res.items.map((u: any) => normalizeUser(u));
     }
     return res;
   },
@@ -154,26 +160,7 @@ export const TeamAPI = {
     const res = await request<any>(`/team/members?teamId=${teamId}`);
     // Handle cases where data is an array directly vs. wrapped in { items: [] }
     const list = Array.isArray(res) ? res : (res?.items || res?.data || []);
-
-    return Array.isArray(list) ? list.map((u: any) => {
-      // Per user, userId and memberId are the same absolute number in this project
-      const identifiedId = Number(u.userId || u.memberId || u.id || 0);
-
-      let finalAvatar = u.avatarUrl || u.avatar || null;
-      if (typeof finalAvatar === 'string' && finalAvatar.includes('https://')) {
-        const parts = finalAvatar.split('https://');
-        finalAvatar = 'https://' + parts[parts.length - 1];
-      }
-
-      return {
-        ...u,
-        memberId: identifiedId,
-        userId: identifiedId,
-        id: identifiedId,
-        name: u.name || u.realname || u.username || (u.user && (u.user.name || u.user.username || u.user.realname)) || `用户#${identifiedId}`,
-        avatar: finalAvatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(u.username || 'U')}&background=random`
-      };
-    }) : [];
+    return Array.isArray(list) ? list.map((u: any) => normalizeUser(u)) : [];
   },
 
   quit: (data: { teamId: number }) =>
@@ -197,23 +184,7 @@ export const ProjectAPI = {
     const res = await request<any>(`/project/listMember?projectId=${projectId}&page=${page}&size=${size}`);
     // Support both direct array response (unlikely for paginated) and { items: [] } wrapper
     const list = Array.isArray(res) ? res : (res?.items || []);
-
-    const mappedItems = list.map((m: any) => {
-      const identifiedId = Number(m.userId || m.memberId || m.id || 0);
-
-      let finalAvatar = m.avatarUrl || m.avatar || null;
-      if (typeof finalAvatar === 'string' && finalAvatar.includes('https://') && finalAvatar.lastIndexOf('https://') > 0) {
-        finalAvatar = 'https://' + finalAvatar.split('https://').pop();
-      }
-
-      return {
-        ...m,
-        userId: identifiedId,
-        id: identifiedId,
-        name: m.name || m.realname || m.username || (m.user && (m.user.name || m.user.username || m.user.realname)) || `用户#${identifiedId}`,
-        avatar: finalAvatar || `https://ui-avatars.com/api/?name=${m.username || 'U'}&background=random`
-      };
-    });
+    const mappedItems = list.map((m: any) => normalizeUser(m));
 
     if (Array.isArray(res)) return { items: mappedItems };
     return { ...res, items: mappedItems };
