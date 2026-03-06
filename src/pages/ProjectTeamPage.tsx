@@ -480,13 +480,14 @@ export const ProjectTeamPage: React.FC = () => {
                     )}
                 </div>
 
-                {selectedTask && (
-                    <TaskDetailModal
-                        task={selectedTask}
-                        onClose={() => setSelectedTask(null)}
-                    />
-                )}
             </div>
+
+            {selectedTask && (
+                <TaskDetailModal
+                    task={selectedTask}
+                    onClose={() => setSelectedTask(null)}
+                />
+            )}
 
             {isProjectModalOpen && (
                 <CreateProjectModal
