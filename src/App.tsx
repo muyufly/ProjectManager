@@ -12,6 +12,7 @@ import { ProjectTeamPage } from './pages/ProjectTeamPage';
 import { InviteAcceptPage } from './pages/InviteAcceptPage';
 import { LoginPage } from './pages/LoginPage';
 import { RegisterPage } from './pages/RegisterPage';
+import { AuthCallbackPage } from './pages/AuthCallbackPage';
 import type { AppState, Project } from './types';
 import { INITIAL_STATE, AppContext } from './constants';
 import { UserAPI, TeamAPI, ProjectAPI, TaskAPI, NotifyAPI } from './services/api';
@@ -115,6 +116,7 @@ const App: React.FC = () => {
         <Routes>
           <Route path="/login" element={<LoginPage />} />
           <Route path="/register" element={<RegisterPage />} />
+          <Route path="/auth/callback" element={<AuthCallbackPage />} />
           <Route path="*" element={
             !state.currentUser ? (
               <Navigate to="/login" replace />

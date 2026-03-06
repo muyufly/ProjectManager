@@ -38,8 +38,6 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
   const result = await response.json();
   console.log("API Result from", endpoint, ":", result);
 
-  // Some APIs use 'code' for status. We'll only throw if it's explicitly an error code 
-  // AND there's no data returned (since your mock API seems to return data with code 96).
   if (result.code !== undefined && result.code !== 200 && result.code !== 0 && result.data === undefined) {
     throw new Error(result.message || 'API response error');
   }

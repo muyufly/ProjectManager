@@ -83,6 +83,24 @@ export const LoginPage: React.FC = () => {
                     >
                         {loading ? '登录中...' : '登录'}
                     </button>
+
+                    <div className="relative my-6">
+                        <div className="absolute inset-0 flex items-center">
+                            <div className="w-full border-t border-slate-200"></div>
+                        </div>
+                        <div className="relative flex justify-center text-xs uppercase">
+                            <span className="bg-white px-2 text-slate-400 font-bold">或者</span>
+                        </div>
+                    </div>
+
+                    <button
+                        type="button"
+                        onClick={() => window.location.href = '/api/auth/sduLogin'}
+                        className="w-full py-3.5 bg-white border border-slate-200 text-slate-700 font-bold rounded-xl hover:bg-slate-50 transition-colors flex justify-center items-center gap-2"
+                    >
+                        <img src="https://ui-avatars.com/api/?name=SDU&background=005bac&color=fff" alt="SDU" className="w-5 h-5 rounded" />
+                        SDU 统一身份认证登录
+                    </button>
                 </form>
 
                 <div className="mt-8 text-center text-sm text-slate-500">
