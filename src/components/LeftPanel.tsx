@@ -1,7 +1,7 @@
 import React, { useContext } from 'react';
-import { ChevronRight, LayoutGrid } from 'lucide-react';
+import { ChevronRight, LayoutGrid, Users } from 'lucide-react';
 import { AppContext } from '../constants';
-import type { Project } from '../types';
+import type { Project, Team } from '../types';
 import { useNavigate, useLocation } from 'react-router-dom';
 
 interface LeftPanelProps {
@@ -10,48 +10,19 @@ interface LeftPanelProps {
 
 export const LeftPanel: React.FC<LeftPanelProps> = ({ showStats = false }) => {
   const { state } = useContext(AppContext);
-  const { projects } = state;
+  const { projects, teams } = state;
   const navigate = useNavigate();
   const location = useLocation();
 
-  // Mock status mapping
-  const getStatusBadge = (status: Project['status']) => {
-    switch (status) {
-      case 'Active':
-        return <span className="text-[10px] border border-orange-400 text-orange-500 px-2 py-0.5 rounded-full bg-white whitespace-nowrap">进行中</span>;
-      case 'Archived':
-        return <span className="text-[10px] border border-red-400 text-red-500 px-2 py-0.5 rounded-full bg-white whitespace-nowrap">已结束</span>;
-      case 'Pending':
-        return <span className="text-[10px] border border-blue-400 text-blue-500 px-2 py-0.5 rounded-full bg-white whitespace-nowrap">未开始</span>;
-      case 'Completed':
-        return <span className="text-[10px] border border-green-400 text-green-500 px-2 py-0.5 rounded-full bg-white whitespace-nowrap">已完成</span>;
-      default:
-        return null;
-    }
+  const handleTeamClick = (team: Team) => {
+    const tId = team.teamId || team.id;
+    navigate(`/team/${tId}`);
   };
 
-  const handleProjectClick = (project: Project) => {
-    const pId = project.projectId || project.id;
-    const tId = project.teamId;
-
-    if (location.pathname.startsWith('/tasks')) {
-      navigate(`/tasks/${pId}`);
-    } else {
-      navigate(`/team/${tId}`);
-    }
+  const isTeamActive = (team: Team) => {
+    const tId = team.teamId || team.id;
+    return location.pathname === `/team/${tId}`;
   };
-
-  const isProjectActive = (project: Project) => {
-    // Both teamId and projectId can be either 'teamId' or just 'id' depending on API translation, be robust
-    const pId = project.projectId || project.id;
-    const tId = project.teamId;
-
-    const isTeamActive = location.pathname === `/team/${tId}`;
-    const isTaskActive = location.pathname === `/tasks/${pId}`;
-    return isTeamActive || isTaskActive;
-  };
-
-  const myProjects = projects;
 
   const completedCount = projects.filter(p => p.status === 'Completed').length;
   const inProgressCount = projects.filter(p => p.status === 'Active').length;
@@ -82,11 +53,11 @@ export const LeftPanel: React.FC<LeftPanelProps> = ({ showStats = false }) => {
         </div>
 
         <div className="space-y-3">
-          {myProjects.length === 0 ? (
-             <div className="text-sm text-slate-400 text-center py-4">暂无项目</div>
+          {teams.length === 0 ? (
+             <div className="text-sm text-slate-400 text-center py-4">暂无团队</div>
           ) : (
-             myProjects.map(project => {
-            const isActive = isProjectActive(project);
+             teams.map(team => {
+            const isActive = isTeamActive(team);
 
             // Dynamic classes based on active state only
             let containerClasses = "p-3 rounded-lg cursor-pointer transition-all border ";
@@ -96,25 +67,34 @@ export const LeftPanel: React.FC<LeftPanelProps> = ({ showStats = false }) => {
               containerClasses += "bg-white hover:bg-slate-50 border-transparent hover:border-slate-200 text-slate-800";
             }
 
+            const memberCount = team.memberIds?.length || 0;
+            const isOwner = team.ownerId === state.currentUser?.id || team.ownerId === state.currentUser?.userId;
+            const isAdmin = team.adminIds?.includes(state.currentUser?.id || 0) || team.adminIds?.includes(state.currentUser?.userId || 0);
+            
+            let roleLabel = '成员';
+            if (isOwner) roleLabel = '所有者';
+            else if (isAdmin) roleLabel = '管理员';
+
             return (
               <div
-                key={project.id}
-                onClick={() => handleProjectClick(project)}
+                key={team.id}
+                onClick={() => handleTeamClick(team)}
                 className={containerClasses}
               >
                 <div className="flex justify-between items-start mb-1">
                   <span className={`text-sm font-bold truncate pr-2 ${isActive ? 'text-white' : 'text-slate-800'}`}>
-                    {project.name}
+                    {team.name}
                   </span>
-                  <div className="flex-shrink-0">
-                    {getStatusBadge(project.status || 'Active')}
+                  <div className={`flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full whitespace-nowrap ${isActive ? 'bg-blue-500 text-white' : 'bg-slate-100 text-slate-500'}`}>
+                    <Users size={10} />
+                    {memberCount}
                   </div>
                 </div>
                 <div className={`text-xs mt-1 ${isActive ? 'text-blue-100' : 'text-slate-500'}`}>
-                  角色: {state.currentUser?.role === 'Admin' ? '管理员' : (state.currentUser?.jobTitle || '成员')}
+                  角色: {roleLabel}
                 </div>
-                <div className={`text-xs ${isActive ? 'text-blue-100' : 'text-slate-500'}`}>
-                  截止日期: {project.deadline || '未设置'}
+                <div className={`text-xs truncate ${isActive ? 'text-blue-100' : 'text-slate-400'}`}>
+                  {team.description || '暂无描述'}
                 </div>
               </div>
             );

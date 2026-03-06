@@ -6,7 +6,7 @@ import { UserAPI } from '../services/api';
 export const AuthCallbackPage: React.FC = () => {
     const navigate = useNavigate();
     const location = useLocation();
-    const { setState } = useContext(AppContext);
+    const { refreshData } = useContext(AppContext);
 
     useEffect(() => {
         const handleCallback = async () => {
@@ -16,8 +16,7 @@ export const AuthCallbackPage: React.FC = () => {
             if (token) {
                 try {
                     localStorage.setItem('student_online_token', token);
-                    const userInfo = await UserAPI.getInfo();
-                    setState(prev => ({ ...prev, currentUser: userInfo }));
+                    await refreshData();
                     navigate('/');
                 } catch (err) {
                     console.error('Unified auth callback error:', err);
@@ -29,7 +28,7 @@ export const AuthCallbackPage: React.FC = () => {
         };
 
         handleCallback();
-    }, [location, navigate, setState]);
+    }, [location, navigate, refreshData]);
 
     return (
         <div className="min-h-screen bg-[#f0f6fa] flex items-center justify-center">

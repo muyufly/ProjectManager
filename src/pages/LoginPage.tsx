@@ -9,7 +9,7 @@ export const LoginPage: React.FC = () => {
     const [error, setError] = useState('');
     const [loading, setLoading] = useState(false);
     const navigate = useNavigate();
-    const { setState } = useContext(AppContext);
+    const { refreshData } = useContext(AppContext);
 
     const handleLogin = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -21,11 +21,9 @@ export const LoginPage: React.FC = () => {
             console.log("Login response:", res);
             localStorage.setItem('student_online_token', res.token);
 
-            // Fetch full user info after login
-            console.log("Fetching user info...");
-            const userInfo = await UserAPI.getInfo();
-            console.log("User info fetched:", userInfo);
-            setState(prev => ({ ...prev, currentUser: userInfo }));
+            // Fetch full user info and other data after login
+            console.log("Fetching user info and refreshing data...");
+            await refreshData();
             console.log("Redirecting to root...");
             navigate('/');
         } catch (err: any) {
@@ -95,7 +93,10 @@ export const LoginPage: React.FC = () => {
 
                     <button
                         type="button"
-                        onClick={() => window.location.href = '/api/auth/sduLogin'}
+                        onClick={() => {
+                            const redirect = encodeURIComponent(`${window.location.origin}/#/auth/callback`);
+                            window.location.href = `/api/auth?callback=${redirect}`;
+                        }}
                         className="w-full py-3.5 bg-white border border-slate-200 text-slate-700 font-bold rounded-xl hover:bg-slate-50 transition-colors flex justify-center items-center gap-2"
                     >
                         <img src="https://ui-avatars.com/api/?name=SDU&background=005bac&color=fff" alt="SDU" className="w-5 h-5 rounded" />

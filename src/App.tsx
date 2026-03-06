@@ -33,77 +33,83 @@ const App: React.FC = () => {
   const [state, setState] = useState<AppState>(INITIAL_STATE);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    const initAuth = async () => {
-      const token = localStorage.getItem('student_online_token');
-      if (token) {
-        try {
-          const user = await UserAPI.getInfo();
-          // Fetch teams
-          const teamsRes = await TeamAPI.list(1, 100);
-          const teams = teamsRes.items || [];
+  const refreshData = async () => {
+    const token = localStorage.getItem('student_online_token');
+    if (token) {
+      try {
+        const user = await UserAPI.getInfo();
+        // Fetch teams
+        const teamsRes = await TeamAPI.list(1, 100);
+        const teams = teamsRes.items || [];
 
-          let projects: Project[] = [];
-          let allTasks: any[] = [];
-          let allUsers: any[] = [];
+        const uniqueProjects = new Map<number, Project>();
+        let allTasks: any[] = [];
+        let allUsers: any[] = [];
 
-          // Fetch projects for all teams the user belongs to
-          for (const team of teams) {
-            try {
-              const projRes = await ProjectAPI.list(team.teamId, 1, 100);
-              if (projRes.items) {
-                projects = [...projects, ...projRes.items];
+        // Fetch projects for all teams the user belongs to
+        for (const team of teams) {
+          try {
+            const projRes = await ProjectAPI.list(team.teamId, 1, 100);
+            if (projRes.items) {
+              for (const proj of projRes.items) {
+                const pId = proj.projectId || proj.id;
+                if (!uniqueProjects.has(pId)) {
+                  uniqueProjects.set(pId, proj);
 
-                // Fetch tasks for each project
-                for (const proj of projRes.items) {
+                  // Fetch tasks for each project
                   try {
-                    const taskRes = await TaskAPI.list(proj.projectId);
+                    const taskRes = await TaskAPI.list(pId);
                     if (taskRes.items) {
                       allTasks = [...allTasks, ...taskRes.items];
                     }
                   } catch (e) { }
                 }
               }
-            } catch (e) {
-              console.warn('Failed to fetch projects for team', team.teamId);
             }
+          } catch (e) {
+            console.warn('Failed to fetch projects for team', team.teamId);
           }
-
-          // Fetch notifications and use as announcements
-          let notifications: any[] = [];
-          try {
-            const notifyRes = await NotifyAPI.list(1, 20);
-            notifications = notifyRes.items || [];
-          } catch (e) { }
-
-          // Map notifications to announcements
-          const announcements = notifications.map(n => ({
-            id: n.id,
-            title: n.title,
-            content: n.content,
-            isRead: n.isRead,
-            date: n.createdAt.split('T')[0],
-            time: n.createdAt.split('T')[1]?.substring(0, 5) || ''
-          }));
-
-          setState(prev => ({
-            ...prev,
-            currentUser: user,
-            teams: teams,
-            projects: projects,
-            tasks: allTasks,
-            notifications: notifications,
-            announcements: announcements,
-            availableProjects: projects
-          }));
-        } catch (err) {
-          console.error(err);
-          localStorage.removeItem('student_online_token');
         }
+
+        const projects = Array.from(uniqueProjects.values());
+
+        // Fetch notifications and use as announcements
+        let notifications: any[] = [];
+        try {
+          const notifyRes = await NotifyAPI.list(1, 20);
+          notifications = notifyRes.items || [];
+        } catch (e) { }
+
+        // Map notifications to announcements
+        const announcements = notifications.map(n => ({
+          id: n.id,
+          title: n.title,
+          content: n.content,
+          isRead: n.isRead,
+          date: n.createdAt.split('T')[0],
+          time: n.createdAt.split('T')[1]?.substring(0, 5) || ''
+        }));
+
+        setState(prev => ({
+          ...prev,
+          currentUser: user,
+          teams: teams,
+          projects: projects,
+          tasks: allTasks,
+          notifications: notifications,
+          announcements: announcements,
+          availableProjects: projects
+        }));
+      } catch (err) {
+        console.error(err);
+        localStorage.removeItem('student_online_token');
       }
-      setLoading(false);
-    };
-    initAuth();
+    }
+    setLoading(false);
+  };
+
+  useEffect(() => {
+    refreshData();
   }, []);
 
   if (loading) {
@@ -111,7 +117,7 @@ const App: React.FC = () => {
   }
 
   return (
-    <AppContext.Provider value={{ state, setState }}>
+    <AppContext.Provider value={{ state, setState, refreshData }}>
       <HashRouter>
         <Routes>
           <Route path="/login" element={<LoginPage />} />

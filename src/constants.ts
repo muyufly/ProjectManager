@@ -16,9 +16,11 @@ export const INITIAL_STATE: AppState = {
 export interface AppContextType {
   state: AppState;
   setState: React.Dispatch<React.SetStateAction<AppState>>;
+  refreshData: () => Promise<void>;
 }
 
 export const AppContext = createContext<AppContextType>({
   state: INITIAL_STATE,
   setState: () => { },
+  refreshData: async () => { },
 });
