@@ -9,6 +9,8 @@ import { CreateProjectModal } from '../components/CreateProjectModal';
 import { CreateTeamModal } from '../components/CreateTeamModal';
 import { TaskAPI, ProjectAPI, TeamAPI } from '../services/api';
 import { TaskDetailModal } from '../components/TaskDetailModal';
+import { InviteMemberModal } from '../components/InviteMemberModal';
+import { UserPlus } from 'lucide-react';
 
 // Mock Role Groups (Same as in TasksPage)
 interface RoleGroup {
@@ -31,6 +33,8 @@ export const ProjectTeamPage: React.FC = () => {
     const [selectedTask, setSelectedTask] = useState<Task | null>(null);
     const [editMode, setEditMode] = useState<Record<number, boolean>>({});
     const [groupsByProject, setGroupsByProject] = useState<Record<number, RoleGroup[]>>({});
+    const [isInviteModalOpen, setIsInviteModalOpen] = useState(false);
+    const [inviteTeam, setInviteTeam] = useState<{ id: number, name: string } | null>(null);
 
     // Use state data
     const displayProjects = state.projects;
@@ -53,9 +57,13 @@ export const ProjectTeamPage: React.FC = () => {
         setExpandedTeams(prev => ({ ...prev, [teamId]: !prev[teamId] }));
     };
 
-    const resolveUser = (id?: number) => {
+    const resolveUser = (id?: number | string) => {
         if (!id) return undefined;
-        return users.find(u => (u.userId || u.id) === id);
+        // Search by userId or id (loose equality for string/number mix)
+        const user = users.find(u => u.userId == id || u.id == id);
+        if (user) return user;
+        // Fallback for cases where id might be missing but we have more info elsewhere
+        return undefined;
     };
 
     const getGroups = (projectId: number) => {
@@ -119,8 +127,8 @@ export const ProjectTeamPage: React.FC = () => {
                         <button
                             onClick={() => setActiveTab('projects')}
                             className={`px-6 py-2 rounded-lg text-sm font-bold transition-all ${activeTab === 'projects'
-                                    ? 'bg-blue-600 text-white shadow-md'
-                                    : 'text-slate-500 hover:text-slate-800 hover:bg-slate-50'
+                                ? 'bg-blue-600 text-white shadow-md'
+                                : 'text-slate-500 hover:text-slate-800 hover:bg-slate-50'
                                 }`}
                         >
                             我的项目
@@ -128,8 +136,8 @@ export const ProjectTeamPage: React.FC = () => {
                         <button
                             onClick={() => setActiveTab('teams')}
                             className={`px-6 py-2 rounded-lg text-sm font-bold transition-all ${activeTab === 'teams'
-                                    ? 'bg-blue-600 text-white shadow-md'
-                                    : 'text-slate-500 hover:text-slate-800 hover:bg-slate-50'
+                                ? 'bg-blue-600 text-white shadow-md'
+                                : 'text-slate-500 hover:text-slate-800 hover:bg-slate-50'
                                 }`}
                         >
                             我的团队
@@ -199,7 +207,7 @@ export const ProjectTeamPage: React.FC = () => {
                                                         <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">截止日期</span>
                                                         <span className="text-sm font-bold text-slate-700">{project.deadline}</span>
                                                     </div>
-                                                    
+
                                                     {isExpanded ? <ChevronUp className="text-slate-400" /> : <ChevronDown className="text-slate-400" />}
                                                 </div>
                                             </div>
@@ -298,7 +306,7 @@ export const ProjectTeamPage: React.FC = () => {
                                                             <Clock size={20} className="text-blue-500" />
                                                             任务时间线 ({projectTasks.length})
                                                         </h4>
-                                                        
+
                                                         <div className="relative border-l-2 border-slate-100 ml-3 space-y-8 pl-8 py-2">
                                                             {sortedTasks.length === 0 ? (
                                                                 <div className="text-slate-400 text-sm italic py-4">暂无任务动态</div>
@@ -308,11 +316,11 @@ export const ProjectTeamPage: React.FC = () => {
                                                                     const date = task.completedAt || task.dueDate;
                                                                     const dateObj = new Date(date);
                                                                     const formattedDate = `${dateObj.getMonth() + 1}月${dateObj.getDate()}日`;
-                                                                    
+
                                                                     return (
                                                                         <div key={task.id} className="relative group cursor-pointer" onClick={() => setSelectedTask(task)}>
                                                                             <div className="absolute -left-[41px] top-3 w-4 h-4 rounded-full border-2 border-white bg-slate-200 group-hover:bg-blue-500 transition-colors shadow-sm"></div>
-                                                                            
+
                                                                             <div className="bg-white p-4 rounded-2xl border border-slate-100 hover:border-blue-200 hover:shadow-md transition-all flex items-center justify-between gap-4">
                                                                                 <div className="flex items-center gap-4">
                                                                                     <div className="w-10 h-10 rounded-xl bg-slate-50 overflow-hidden border border-white shadow-sm">
@@ -321,11 +329,10 @@ export const ProjectTeamPage: React.FC = () => {
                                                                                     <div>
                                                                                         <div className="flex items-center gap-2">
                                                                                             <span className="text-sm font-bold text-slate-800">{task.title}</span>
-                                                                                            <span className={`text-[10px] font-bold px-2 py-0.5 rounded uppercase tracking-wider ${
-                                                                                                task.status === TaskStatus.DONE ? 'bg-emerald-50 text-emerald-600' :
+                                                                                            <span className={`text-[10px] font-bold px-2 py-0.5 rounded uppercase tracking-wider ${task.status === TaskStatus.DONE ? 'bg-emerald-50 text-emerald-600' :
                                                                                                 task.status === TaskStatus.IN_PROGRESS ? 'bg-blue-50 text-blue-600' :
-                                                                                                'bg-slate-50 text-slate-400'
-                                                                                            }`}>
+                                                                                                    'bg-slate-50 text-slate-400'
+                                                                                                }`}>
                                                                                                 {task.status}
                                                                                             </span>
                                                                                         </div>
@@ -373,6 +380,7 @@ export const ProjectTeamPage: React.FC = () => {
                                     const creator = resolveUser(team.creatorId || team.ownerId);
                                     const adminIds = team.adminIds || [];
                                     const memberIds = team.memberIds || [];
+                                    const isTeamAdmin = adminIds.includes(state.currentUser?.userId || 0) || (team.ownerId === state.currentUser?.userId);
 
                                     return (
                                         <div key={team.id} className={`bg-white rounded-[2rem] border transition-all duration-300 overflow-hidden ${isExpanded ? 'shadow-xl border-indigo-200 ring-1 ring-indigo-100' : 'shadow-sm border-slate-100 hover:shadow-md'}`}>
@@ -400,6 +408,17 @@ export const ProjectTeamPage: React.FC = () => {
                                                         <div className="text-xs font-bold text-slate-400 uppercase tracking-wider">成员数</div>
                                                         <div className="text-sm font-bold text-slate-700">{memberIds.length}</div>
                                                     </div>
+                                                    <button
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            setInviteTeam({ id: tId, name: team.name });
+                                                            setIsInviteModalOpen(true);
+                                                        }}
+                                                        className="p-3 bg-indigo-50 text-indigo-600 rounded-xl hover:bg-indigo-600 hover:text-white transition-all shadow-sm"
+                                                        title="邀请成员"
+                                                    >
+                                                        <UserPlus size={18} />
+                                                    </button>
                                                     {isExpanded ? <ChevronUp className="text-slate-400" /> : <ChevronDown className="text-slate-400" />}
                                                 </div>
                                             </div>
@@ -410,55 +429,40 @@ export const ProjectTeamPage: React.FC = () => {
                                                         <h4 className="text-lg font-black text-slate-800 mb-4">团队成员</h4>
                                                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                                                             {memberIds.length === 0 && (
-                                                                <>
-                                                                    <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-100 flex items-center justify-between opacity-90">
-                                                                        <div className="flex items-center gap-3">
-                                                                            <div className="w-10 h-10 rounded-xl bg-slate-100 overflow-hidden border border-white shadow-sm">
-                                                                                <img src="https://ui-avatars.com/api/?name=GL&background=random" alt="" className="w-full h-full object-cover" />
-                                                                            </div>
-                                                                            <div className="flex flex-col">
-                                                                                <span className="text-sm font-bold text-slate-700">管理员示例</span>
-                                                                                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">ADMIN</span>
-                                                                            </div>
-                                                                        </div>
-                                                                        <div className="flex items-center gap-1">
-                                                                            <span className="text-[10px] font-black text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded">管理员</span>
-                                                                        </div>
-                                                                    </div>
-                                                                    <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-100 flex items-center justify-between opacity-90">
-                                                                        <div className="flex items-center gap-3">
-                                                                            <div className="w-10 h-10 rounded-xl bg-slate-100 overflow-hidden border border-white shadow-sm">
-                                                                                <img src="https://ui-avatars.com/api/?name=CY&background=random" alt="" className="w-full h-full object-cover" />
-                                                                            </div>
-                                                                            <div className="flex flex-col">
-                                                                                <span className="text-sm font-bold text-slate-700">成员示例</span>
-                                                                                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">MEMBER</span>
-                                                                            </div>
-                                                                        </div>
-                                                                        <div className="flex items-center gap-1">
-                                                                            <span className="text-[10px] font-bold text-slate-500 bg-slate-50 border border-slate-200 px-2 py-0.5 rounded">成员</span>
-                                                                        </div>
-                                                                    </div>
-                                                                </>
+                                                                <div className="col-span-full py-10 text-center bg-slate-50/50 rounded-3xl border border-dashed border-slate-200">
+                                                                    <div className="text-slate-400 font-bold text-sm tracking-widest uppercase mb-2">暂无团队成员</div>
+                                                                    <div className="text-slate-300 text-xs">点击上方图标邀请成员加入</div>
+                                                                </div>
                                                             )}
                                                             {(() => {
-                                                                const coreIds = [team.creatorId || team.ownerId, ...adminIds].filter(Boolean) as number[];
-                                                                const uniqueCore = Array.from(new Set(coreIds));
-                                                                const ordered = [...uniqueCore, ...memberIds.filter(id => !uniqueCore.includes(id))];
-                                                                return ordered;
+                                                                const ownerId = Number(team.creatorId || team.ownerId);
+                                                                const adminNums = (adminIds || []).map(id => Number(id));
+                                                                const memberNums = (memberIds || []).map(id => Number(id));
+
+                                                                // Primary source is memberNums. Sort them: Owner first, then Admins.
+                                                                return memberNums.sort((a, b) => {
+                                                                    if (a === ownerId) return -1;
+                                                                    if (b === ownerId) return 1;
+                                                                    const aIsAdmin = adminNums.includes(a);
+                                                                    const bIsAdmin = adminNums.includes(b);
+                                                                    if (aIsAdmin && !bIsAdmin) return -1;
+                                                                    if (!aIsAdmin && bIsAdmin) return 1;
+                                                                    return 0;
+                                                                });
                                                             })().map((id, idx) => {
                                                                 const user = resolveUser(id);
-                                                                const isAdmin = adminIds.includes(id);
-                                                                const isCreator = (team.creatorId || team.ownerId) === id;
+                                                                const isAdmin = (adminIds || []).some(aid => Number(aid) === Number(id));
+                                                                const isCreator = Number(team.creatorId || team.ownerId) === Number(id);
+                                                                if (!id && !user) return null;
                                                                 return (
                                                                     <div key={idx} className="bg-white p-4 rounded-xl shadow-sm border border-slate-100 flex items-center justify-between">
                                                                         <div className="flex items-center gap-3">
                                                                             <div className="w-10 h-10 rounded-xl bg-slate-100 overflow-hidden border border-white shadow-sm">
-                                                                                <img src={user?.avatar || 'https://ui-avatars.com/api/?name=U&background=random'} alt="" className="w-full h-full object-cover" />
+                                                                                <img src={user?.avatar || `https://ui-avatars.com/api/?name=${user?.username || 'U'}&background=random`} alt="" className="w-full h-full object-cover" />
                                                                             </div>
                                                                             <div className="flex flex-col">
-                                                                                <span className="text-sm font-bold text-slate-700">{user?.name || `用户#${id}`}</span>
-                                                                                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{user?.role || '成员'}</span>
+                                                                                <span className="text-sm font-bold text-slate-700">{user?.name || user?.username || `用户#${id}`}</span>
+                                                                                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{user?.role || (isAdmin ? '管理员' : '成员')}</span>
                                                                             </div>
                                                                         </div>
                                                                         <div className="flex items-center gap-1">
@@ -523,14 +527,23 @@ export const ProjectTeamPage: React.FC = () => {
                     onSubmit={async (data) => {
                         try {
                             const teamId = await TeamAPI.create(data);
+
+                            // Immediately fetch actual members to sync state with backend
+                            const membersRes = await TeamAPI.members(teamId);
+                            const actualMembers = membersRes.data || [];
+                            const memberIds = actualMembers.map((m: any) => m.userId || m.id);
+                            const adminIds = actualMembers
+                                .filter((m: any) => m.teamRole === 'CREATOR' || m.teamRole === 'ADMIN')
+                                .map((m: any) => m.userId || m.id);
+
                             const newTeam: Team = {
                                 id: teamId,
                                 teamId: teamId,
                                 name: data.name,
                                 description: data.description || '',
-                                ownerId: state.currentUser?.userId || 0,
-                                memberIds: [state.currentUser?.userId || 0],
-                                adminIds: [state.currentUser?.userId || 0]
+                                ownerId: state.currentUser?.userId || state.currentUser?.id || 0,
+                                memberIds: memberIds.length > 0 ? memberIds : [state.currentUser?.userId || 0],
+                                adminIds: adminIds.length > 0 ? adminIds : [state.currentUser?.userId || 0]
                             };
                             setState(prev => ({ ...prev, teams: [...prev.teams, newTeam] }));
                         } catch (e) {
@@ -563,6 +576,17 @@ export const ProjectTeamPage: React.FC = () => {
                         } catch (e) {
                             alert('创建任务失败');
                         }
+                    }}
+                />
+            )}
+
+            {isInviteModalOpen && inviteTeam && (
+                <InviteMemberModal
+                    teamId={inviteTeam.id}
+                    teamName={inviteTeam.name}
+                    onClose={() => {
+                        setIsInviteModalOpen(false);
+                        setInviteTeam(null);
                     }}
                 />
             )}

@@ -16,7 +16,7 @@ export const AnnouncementDetailPage: React.FC = () => {
       <div className="flex gap-6 h-full">
         <LeftPanel />
         <div className="flex-1 flex flex-col items-center justify-center text-slate-400">
-          未找到公告
+          未找到通知
           <button onClick={() => navigate('/announcements')} className="text-blue-500 hover:underline mt-2">返回</button>
         </div>
       </div>
@@ -30,10 +30,10 @@ export const AnnouncementDetailPage: React.FC = () => {
       <div className="flex-1 flex flex-col gap-6 overflow-y-auto pr-2 pb-10">
         <div className="flex items-center gap-4">
           <div className="bg-blue-200 w-fit px-4 py-2 rounded-lg shadow-sm">
-            <h2 className="text-xl font-bold text-slate-800">项目公告</h2>
+            <h2 className="text-xl font-bold text-slate-800">项目通知</h2>
           </div>
           <button className="px-6 py-2 rounded-full border border-blue-400 text-blue-500 font-bold hover:bg-blue-50 transition-colors text-sm">
-            发布公告
+            发布通知
           </button>
         </div>
 

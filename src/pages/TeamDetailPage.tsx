@@ -1,10 +1,11 @@
-import React, { useContext, useState } from 'react';
+import React, { useContext, useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { AppContext } from '../constants';
 import { LeftPanel } from '../components/LeftPanel';
 import type { User } from '../types';
 import { Users, UserPlus, Shield, ShieldAlert, Trash2, LogOut } from 'lucide-react';
 import { TeamAPI } from '../services/api';
+import { InviteMemberModal } from '../components/InviteMemberModal';
 
 export const TeamDetailPage: React.FC = () => {
     const { teamId } = useParams<{ teamId: string }>();
@@ -12,8 +13,26 @@ export const TeamDetailPage: React.FC = () => {
     const { teams, projects, users, currentUser } = state;
     const navigate = useNavigate();
     const [loading, setLoading] = useState(false);
+    const [isInviteModalOpen, setIsInviteModalOpen] = useState(false);
+    const [teamMembers, setTeamMembers] = useState<any[]>([]);
 
     const tId = Number(teamId);
+
+    const fetchMembers = async () => {
+        if (!tId) return;
+        try {
+            const res = await TeamAPI.members(tId);
+            if (res.code === 200 && Array.isArray(res.data)) {
+                setTeamMembers(res.data);
+            }
+        } catch (e) {
+            console.error('Failed to fetch team members:', e);
+        }
+    };
+
+    useEffect(() => {
+        fetchMembers();
+    }, [tId]);
     const team = teams.find(t => t.id === tId || t.teamId === tId);
     const project = projects.find(p => p.teamId === tId);
 
@@ -29,6 +48,7 @@ export const TeamDetailPage: React.FC = () => {
         setLoading(true);
         try {
             await TeamAPI.removeMember({ teamId: team.teamId || team.id, memberId });
+            fetchMembers(); // Refresh members list
             setState(prev => ({
                 ...prev,
                 teams: prev.teams.map(t =>
@@ -47,8 +67,11 @@ export const TeamDetailPage: React.FC = () => {
     const handleToggleAdmin = async (memberId: number, currentIsAdmin: boolean) => {
         setLoading(true);
         try {
-            const apiCall = currentIsAdmin ? TeamAPI.removeAdmin : TeamAPI.addAdmin;
-            await apiCall({ teamId: team.teamId || team.id, adminId: memberId });
+            currentIsAdmin
+                ? await TeamAPI.removeAdmin({ teamId: team.teamId || team.id, adminId: memberId })
+                : await TeamAPI.addAdmin({ teamId: team.teamId || team.id, adminId: memberId });
+
+            fetchMembers(); // Refresh members list
             setState(prev => ({
                 ...prev,
                 teams: prev.teams.map(t =>
@@ -106,14 +129,12 @@ export const TeamDetailPage: React.FC = () => {
                             <h2 className="text-xl font-bold text-slate-800">团队详情</h2>
                         </div>
                         <div className="flex gap-3">
-                            {isAdmin && (
-                                <button
-                                    onClick={() => alert('请在“个人中心-搜索”中邀请新成员')}
-                                    className="px-4 py-2 bg-blue-500 text-white rounded-xl font-bold flex items-center gap-2 hover:bg-blue-600 transition-colors shadow-sm"
-                                >
-                                    <UserPlus size={18} /> 邀请成员
-                                </button>
-                            )}
+                            <button
+                                onClick={() => setIsInviteModalOpen(true)}
+                                className="px-4 py-2 bg-blue-500 text-white rounded-xl font-bold flex items-center gap-2 hover:bg-blue-600 transition-colors shadow-sm"
+                            >
+                                <UserPlus size={18} /> 邀请成员
+                            </button>
                             <button
                                 onClick={handleQuit}
                                 className="px-4 py-2 border border-red-200 text-red-500 rounded-xl font-bold flex items-center gap-2 hover:bg-red-50 transition-colors"
@@ -157,7 +178,7 @@ export const TeamDetailPage: React.FC = () => {
                     <div className="p-8 md:p-10 pt-6">
                         <h3 className="font-bold text-slate-800 text-lg mb-6 flex items-center gap-2">
                             <span className="w-1.5 h-6 bg-blue-500 rounded-full"></span>
-                            团队成员 ({team.memberIds.length})
+                            团队成员 ({teamMembers.length})
                         </h3>
 
                         <div className="overflow-x-auto border border-slate-200 rounded-xl">
@@ -171,12 +192,10 @@ export const TeamDetailPage: React.FC = () => {
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-slate-100">
-                                    {team.memberIds.map(memberId => {
-                                        const user = users.find(u => u.id === memberId || u.userId === memberId);
-                                        if (!user) return null;
-
-                                        const isUserOwner = user.userId === team.ownerId || user.id === team.ownerId;
-                                        const isUserAdmin = team.adminIds?.includes(user.userId || user.id) || isUserOwner;
+                                    {teamMembers.map(user => {
+                                        const uId = user.userId || user.id;
+                                        const isUserOwner = user.teamRole === 'CREATOR' || uId === team.ownerId;
+                                        const isUserAdmin = user.teamRole === 'ADMIN' || user.teamRole === 'CREATOR' || team.adminIds?.includes(uId) || isUserOwner;
 
                                         return (
                                             <tr key={user.id} className="hover:bg-slate-50 transition-colors group">
@@ -187,11 +206,18 @@ export const TeamDetailPage: React.FC = () => {
                                                         </div>
                                                         <div>
                                                             <div className="font-bold text-slate-800 flex items-center gap-1">
-                                                                {user.name}
+                                                                {user.name || user.username}
                                                                 {isUserOwner && <ShieldAlert size={14} className="text-orange-500" />}
                                                                 {isUserAdmin && !isUserOwner && <Shield size={14} className="text-blue-500" />}
                                                             </div>
-                                                            <div className="text-xs text-slate-400">{user.role}</div>
+                                                            <div className="flex items-center gap-2 mt-0.5">
+                                                                <span className="text-[10px] bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded font-bold uppercase tracking-tighter">
+                                                                    {user.teamRole || 'MEMBER'}
+                                                                </span>
+                                                                <span className="text-[10px] text-slate-400">
+                                                                    {user.joinedAt ? new Date(user.joinedAt).toLocaleDateString() : '未知时间'} 加入
+                                                                </span>
+                                                            </div>
                                                         </div>
                                                     </div>
                                                 </td>
@@ -232,6 +258,14 @@ export const TeamDetailPage: React.FC = () => {
                         </div>
                     </div>
                 </div>
+
+                {isInviteModalOpen && (
+                    <InviteMemberModal
+                        teamId={team.teamId || team.id}
+                        teamName={team.name}
+                        onClose={() => setIsInviteModalOpen(false)}
+                    />
+                )}
             </div>
         </div>
     );

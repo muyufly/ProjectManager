@@ -40,14 +40,23 @@ export const Dashboard: React.FC = () => {
     const handleCreateTeam = async (data: { name: string; description?: string }) => {
         try {
             const teamId = await TeamAPI.create(data);
+
+            // Immediately fetch actual members to sync state with backend
+            const membersRes = await TeamAPI.members(teamId);
+            const actualMembers = membersRes.data || [];
+            const memberIds = actualMembers.map((m: any) => m.userId || m.id);
+            const adminIds = actualMembers
+                .filter((m: any) => m.teamRole === 'CREATOR' || m.teamRole === 'ADMIN')
+                .map((m: any) => m.userId || m.id);
+
             const newTeam = {
                 id: teamId,
                 teamId: teamId,
                 name: data.name,
                 description: data.description || '',
-                ownerId: state.currentUser?.userId || 0,
-                memberIds: [state.currentUser?.userId || 0],
-                adminIds: [state.currentUser?.userId || 0]
+                ownerId: state.currentUser?.userId || state.currentUser?.id || 0,
+                memberIds: memberIds.length > 0 ? memberIds : [state.currentUser?.userId || 0],
+                adminIds: adminIds.length > 0 ? adminIds : [state.currentUser?.userId || 0]
             };
             setState(prev => ({ ...prev, teams: [...prev.teams, newTeam] }));
         } catch (e) {
@@ -168,7 +177,7 @@ export const Dashboard: React.FC = () => {
                         <div className="flex items-center justify-between">
                             <div className="flex items-center gap-2">
                                 <Megaphone className="text-slate-400" size={20} />
-                                <h2 className="text-xl font-black text-slate-800 uppercase tracking-widest">最新公告</h2>
+                                <h2 className="text-xl font-black text-slate-800 uppercase tracking-widest">最新通知</h2>
                             </div>
                             {announcements.some(a => !a.isRead) && (
                                 <button
@@ -183,7 +192,7 @@ export const Dashboard: React.FC = () => {
                         <div className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden h-full max-h-[600px] flex flex-col">
                             <div className="p-6 flex-1 overflow-y-auto space-y-6 scrollbar-thin scrollbar-thumb-slate-100">
                                 {announcements.length === 0 ? (
-                                    <div className="text-center py-8 text-slate-400 text-sm italic">暂无公告</div>
+                                    <div className="text-center py-8 text-slate-400 text-sm italic">暂无通知</div>
                                 ) : (
                                     announcements.map(a => (
                                         <div
@@ -191,7 +200,18 @@ export const Dashboard: React.FC = () => {
                                             className={`group cursor-pointer p-2 rounded-2xl transition-all ${!a.isRead ? 'bg-blue-50/50' : 'hover:bg-slate-50'}`}
                                             onClick={() => {
                                                 if (!a.isRead) handleMarkAsRead(a.id);
-                                                navigate(`/announcement/${a.id}`);
+
+                                                // Extract invite token if present in content (common for team invites)
+                                                // Handles both URL query style and text labels
+                                                const tokenMatch = a.content?.match(/token=([^&\s]+)/) || a.content?.match(/Token:?\s*([a-zA-Z0-9._-]+)/i);
+                                                const token = tokenMatch ? tokenMatch[1] : null;
+
+                                                if (token) {
+                                                    // Navigate to local invite acceptance handler
+                                                    navigate(`/accept-invite/${token}`);
+                                                } else {
+                                                    navigate(`/announcement/${a.id}`);
+                                                }
                                             }}
                                         >
                                             <div className="flex items-center justify-between mb-2">
@@ -211,7 +231,7 @@ export const Dashboard: React.FC = () => {
                                 onClick={() => navigate('/announcements')}
                                 className="w-full py-4 bg-slate-50 border-t border-slate-100 text-sm font-bold text-slate-600 hover:bg-slate-100 transition-all flex items-center justify-center gap-2"
                             >
-                                查看全部公告 <ArrowRight size={14} />
+                                查看全部通知 <ArrowRight size={14} />
                             </button>
                         </div>
                     </div>

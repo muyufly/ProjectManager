@@ -38,8 +38,8 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
   const result = await response.json();
   console.log("API Result from", endpoint, ":", result);
 
-  if (result.code !== undefined && result.code !== 200 && result.code !== 0 && result.data === undefined) {
-    throw new Error(result.message || 'API response error');
+  if (result.code !== undefined && result.code !== 200 && result.code !== 0) {
+    throw new Error(result.message || `API Error: ${result.code}`);
   }
 
   // If the data object exists and contains our expected fields, return it.
@@ -143,6 +143,30 @@ export const TeamAPI = {
 
   disband: (data: { teamId: number }) =>
     request<string>('/team/disband', { method: 'POST', body: JSON.stringify(data) }),
+
+  members: async (teamId: number) => {
+    const res = await request<any>(`/team/members?teamId=${teamId}`);
+    const list = Array.isArray(res) ? res : (res?.data || []);
+
+    return list.map((u: any) => {
+      let finalAvatar = u.avatarUrl || u.avatar || null;
+      if (typeof finalAvatar === 'string' && finalAvatar.includes('https://') && finalAvatar.lastIndexOf('https://') > 0) {
+        finalAvatar = 'https://' + finalAvatar.split('https://').pop();
+      }
+
+      // Robust ID resolution: prefer userId/id, fallback to hashed username or sduId
+      const identifiedId = u.userId || u.id || (u.sduId ? parseInt(u.sduId.replace(/\D/g, '')) : 0) ||
+        (u.username ? u.username.split('').reduce((a: number, b: string) => ((a << 5) - a) + b.charCodeAt(0), 0) : 0);
+
+      return {
+        ...u,
+        userId: identifiedId,
+        id: identifiedId,
+        name: u.realname || u.username || '用户',
+        avatar: finalAvatar
+      };
+    });
+  },
 
   quit: (data: { teamId: number }) =>
     request<string>('/team/quit', { method: 'POST', body: JSON.stringify(data) }),

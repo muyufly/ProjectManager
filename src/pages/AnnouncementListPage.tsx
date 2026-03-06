@@ -47,8 +47,8 @@ export const AnnouncementListPage: React.FC = () => {
                             <Megaphone size={24} className="text-white" />
                         </div>
                         <div>
-                            <h2 className="text-2xl font-black text-slate-800 tracking-tight">项目公告中心</h2>
-                            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em] mt-0.5">Announcement Center</p>
+                            <h2 className="text-2xl font-black text-slate-800 tracking-tight">项目通知中心</h2>
+                            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em] mt-0.5">Notification Center</p>
                         </div>
                     </div>
                     <div className="flex gap-3">
@@ -61,7 +61,7 @@ export const AnnouncementListPage: React.FC = () => {
                             </button>
                         )}
                         <button className="px-6 py-2.5 bg-indigo-600 text-white font-bold rounded-2xl hover:bg-indigo-700 transition-all text-sm shadow-lg shadow-indigo-100">
-                            发布公告
+                            发布通知
                         </button>
                     </div>
                 </div>
@@ -73,7 +73,15 @@ export const AnnouncementListPage: React.FC = () => {
                             className={`bg-white p-8 rounded-[2rem] border transition-all cursor-pointer relative group ${!announcement.isRead ? 'border-indigo-100 shadow-xl shadow-indigo-50/50' : 'border-slate-100 shadow-sm hover:shadow-md'}`}
                             onClick={() => {
                                 if (!announcement.isRead) handleMarkAsRead(announcement.id);
-                                navigate(`/announcement/${announcement.id}`);
+
+                                const tokenMatch = announcement.content?.match(/token=([^&\s]+)/) || announcement.content?.match(/Token:?\s*([a-zA-Z0-9._-]+)/i);
+                                const token = tokenMatch ? tokenMatch[1] : null;
+
+                                if (token) {
+                                    navigate(`/accept-invite/${token}`);
+                                } else {
+                                    navigate(`/announcement/${announcement.id}`);
+                                }
                             }}
                         >
                             {!announcement.isRead && (

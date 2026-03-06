@@ -18,9 +18,11 @@ import {
   Activity,
   Calendar,
   Lock,
-  Camera
+  Camera,
+  UserPlus,
+  Plus
 } from 'lucide-react';
-import { UserAPI, UploadAPI, AuthAPI } from '../services/api';
+import { UserAPI, UploadAPI, AuthAPI, TeamAPI } from '../services/api';
 import type { User } from '../types';
 
 export const ProfilePage: React.FC = () => {
@@ -29,9 +31,12 @@ export const ProfilePage: React.FC = () => {
   const [isEditing, setIsEditing] = useState(false);
   const [isChangingPassword, setIsChangingPassword] = useState(false);
   const [passwordForm, setPasswordForm] = useState({ oldPassword: '', newPassword: '' });
+  const [searching, setSearching] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<User[]>([]);
-  const [searching, setSearching] = useState(false);
+  const [isJoinTeamModalOpen, setIsJoinTeamModalOpen] = useState(false);
+  const [joinToken, setJoinToken] = useState('');
+  const { refreshData } = useContext(AppContext);
 
   const [editForm, setEditForm] = useState({
     username: currentUser?.username || '',
@@ -196,6 +201,29 @@ export const ProfilePage: React.FC = () => {
     }
   };
 
+  const handleJoinTeam = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!joinToken.trim()) return;
+
+    setLoading(true);
+    try {
+      // Extract token if a full URL was pasted
+      const tokenMatch = joinToken.match(/token=([^&\s]+)/) || joinToken.match(/accept-invite\/([a-zA-Z0-9._-]+)/);
+      const actualToken = tokenMatch ? tokenMatch[1] : joinToken.trim();
+
+      await TeamAPI.acceptInvite(actualToken);
+      alert('成功加入团队！');
+      setIsJoinTeamModalOpen(false);
+      setJoinToken('');
+      if (refreshData) await refreshData();
+    } catch (e) {
+      console.error('Join team error:', e);
+      alert('加入失败: ' + (e as Error).message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <div className="h-full flex flex-col gap-6 overflow-y-auto pb-10 pr-4 scrollbar-thin scrollbar-thumb-slate-200">
 
@@ -302,21 +330,41 @@ export const ProfilePage: React.FC = () => {
           </div>
 
           {/* Security Action */}
-          <button
-            onClick={() => setIsChangingPassword(true)}
-            className="w-full bg-white rounded-2xl p-4 shadow-sm border border-slate-100 hover:border-blue-200 hover:shadow-md hover:bg-blue-50/50 transition-all group flex items-center justify-between"
-          >
-            <div className="flex items-center gap-4">
-              <div className="w-10 h-10 bg-slate-50 group-hover:bg-white rounded-xl flex items-center justify-center text-slate-500 group-hover:text-blue-600 transition-colors shadow-sm">
-                <ShieldCheck size={20} />
+          <div className="space-y-3">
+            <button
+              onClick={() => setIsChangingPassword(true)}
+              className="w-full bg-white rounded-2xl p-4 shadow-sm border border-slate-100 hover:border-blue-200 hover:shadow-md hover:bg-blue-50/50 transition-all group flex items-center justify-between"
+            >
+              <div className="flex items-center gap-4">
+                <div className="w-10 h-10 bg-slate-50 group-hover:bg-white rounded-xl flex items-center justify-center text-slate-500 group-hover:text-blue-600 transition-colors shadow-sm">
+                  <ShieldCheck size={20} />
+                </div>
+                <div className="text-left">
+                  <p className="text-sm font-black text-slate-800 transition-colors">修改登录密码</p>
+                  <p className="text-xs font-bold text-slate-400">定期更新以保护安全</p>
+                </div>
               </div>
-              <div className="text-left">
-                <p className="text-sm font-black text-slate-800 transition-colors">修改登录密码</p>
-                <p className="text-xs font-bold text-slate-400">定期更新以保护安全</p>
+              <Key size={16} className="text-slate-300 group-hover:text-blue-500 transition-colors" />
+            </button>
+
+            <button
+              onClick={() => setIsJoinTeamModalOpen(true)}
+              className="w-full bg-white rounded-2xl p-4 shadow-sm border border-slate-100 hover:border-emerald-200 hover:shadow-md hover:bg-emerald-50/50 transition-all group flex items-center justify-between"
+            >
+              <div className="flex items-center gap-4">
+                <div className="w-10 h-10 bg-slate-50 group-hover:bg-white rounded-xl flex items-center justify-center text-slate-500 group-hover:text-emerald-600 transition-colors shadow-sm">
+                  <UserPlus size={20} />
+                </div>
+                <div className="text-left">
+                  <p className="text-sm font-black text-slate-800 transition-colors">加入新团队</p>
+                  <p className="text-xs font-bold text-slate-400">输入邀请令牌或链接</p>
+                </div>
               </div>
-            </div>
-            <Key size={16} className="text-slate-300 group-hover:text-blue-500 transition-colors" />
-          </button>
+              <div className="w-6 h-6 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center group-hover:bg-emerald-200 transition-colors">
+                <Plus size={14} strokeWidth={3} />
+              </div>
+            </button>
+          </div>
         </div>
 
         {/* Right Column: Settings Form & Search */}
@@ -519,6 +567,50 @@ export const ProfilePage: React.FC = () => {
                 className="w-full mt-2 py-4 bg-blue-600 text-white font-bold rounded-2xl shadow-lg shadow-blue-200 hover:bg-blue-700 transition-all disabled:opacity-50 flex items-center justify-center gap-2"
               >
                 {loading ? <Loader2 size={18} className="animate-spin" /> : <ShieldCheck size={18} />} 确认修改
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
+      {/* Join Team Modal */}
+      {isJoinTeamModalOpen && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md z-[200] flex items-center justify-center p-4">
+          <div className="bg-white rounded-[2.5rem] p-8 w-full max-w-md shadow-2xl relative animate-in zoom-in-95 duration-200">
+            <button
+              onClick={() => setIsJoinTeamModalOpen(false)}
+              className="absolute top-6 right-6 p-2 text-slate-400 hover:text-slate-600 bg-slate-50 hover:bg-slate-100 rounded-xl transition-all"
+            >
+              <X size={20} />
+            </button>
+
+            <div className="text-center mb-8">
+              <div className="w-16 h-16 bg-emerald-50 rounded-[1.5rem] flex items-center justify-center text-emerald-600 mx-auto mb-4 border border-emerald-100">
+                <UserPlus size={28} />
+              </div>
+              <h3 className="text-xl font-black text-slate-800">加入新团队</h3>
+              <p className="text-slate-500 font-medium text-sm mt-1">粘贴邀请链接或 Token 以加入</p>
+            </div>
+
+            <form onSubmit={handleJoinTeam} className="space-y-5">
+              <div className="space-y-2">
+                <label className="text-xs font-black text-slate-500 ml-1">邀请地址 / Token</label>
+                <textarea
+                  required
+                  rows={3}
+                  placeholder="https://.../accept-invite/YOUR_TOKEN"
+                  value={joinToken}
+                  onChange={(e) => setJoinToken(e.target.value)}
+                  className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl focus:ring-4 focus:ring-emerald-100 focus:border-emerald-500 outline-none transition-all font-bold text-slate-800 text-sm resize-none"
+                />
+                <p className="text-[10px] text-slate-400 font-bold px-1">支持粘贴完整的邮件链接或仅粘贴 Token 字符串</p>
+              </div>
+
+              <button
+                type="submit"
+                disabled={loading || !joinToken.trim()}
+                className="w-full mt-2 py-4 bg-emerald-600 text-white font-bold rounded-2xl shadow-lg shadow-emerald-200 hover:bg-emerald-700 transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+              >
+                {loading ? <Loader2 size={18} className="animate-spin" /> : <Plus size={18} strokeWidth={3} />} 立即加入
               </button>
             </form>
           </div>

@@ -40,11 +40,46 @@ const App: React.FC = () => {
         const user = await UserAPI.getInfo();
         // Fetch teams
         const teamsRes = await TeamAPI.list(1, 100);
-        const teams = teamsRes.items || [];
+        let teams = teamsRes.items || [];
 
         const uniqueProjects = new Map<number, Project>();
         let allTasks: any[] = [];
-        let allUsers: any[] = [];
+        let allUsers: any[] = [user]; // Initialize with current user
+
+        // Fetch members for each team to sync admin and member lists
+        for (let i = 0; i < teams.length; i++) {
+          try {
+            const members = await TeamAPI.members(teams[i].teamId || teams[i].id);
+            if (Array.isArray(members)) {
+              // Add unique users to the allUsers list for global display
+              members.forEach((m: any) => {
+                const mid = Number(m.userId || m.id);
+                // Secondary normalization to guarantee display fields
+                const normalizedUser = {
+                  ...m,
+                  userId: mid,
+                  id: mid,
+                  name: m.name || m.realname || m.username || `用户#${mid}`,
+                  avatar: m.avatar || m.avatarUrl || `https://ui-avatars.com/api/?name=${m.username || 'U'}&background=random`
+                };
+                if (!allUsers.find(u => Number(u.userId || u.id) === mid)) {
+                  allUsers.push(normalizedUser);
+                }
+              });
+
+              teams[i] = {
+                ...teams[i],
+                memberIds: members.map((m: any) => Number(m.userId || m.id)),
+                adminIds: members
+                  .filter((m: any) => m.teamRole === 'CREATOR' || m.teamRole === 'ADMIN')
+                  .map((m: any) => Number(m.userId || m.id)),
+                ownerId: Number(members.find((m: any) => m.teamRole === 'CREATOR')?.userId || teams[i].ownerId)
+              };
+            }
+          } catch (e) {
+            console.warn('Failed to fetch members for team', teams[i].teamId);
+          }
+        }
 
         // Fetch projects for all teams the user belongs to
         for (const team of teams) {
@@ -82,7 +117,7 @@ const App: React.FC = () => {
 
         // Map notifications to announcements
         const announcements = notifications.map(n => ({
-          id: n.id,
+          id: n.notificationId || n.id,
           title: n.title,
           content: n.content,
           isRead: n.isRead,
@@ -96,6 +131,7 @@ const App: React.FC = () => {
           teams: teams,
           projects: projects,
           tasks: allTasks,
+          users: allUsers,
           notifications: notifications,
           announcements: announcements,
           availableProjects: projects
