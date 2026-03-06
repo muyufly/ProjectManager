@@ -1,8 +1,8 @@
-import React, { useState, useContext, useEffect } from 'react';
-import { X, MessageSquare, Paperclip, Send, Clock, User as UserIcon, CheckCircle2, AlertCircle } from 'lucide-react';
+import React, { useState, useContext, useEffect, useRef } from 'react';
+import { X, MessageSquare, Paperclip, Send, Clock, User as UserIcon, CheckCircle2, AlertCircle, Loader2 } from 'lucide-react';
 import { Task, TaskStatus, TaskPriority, Comment } from '../types';
 import { AppContext } from '../constants';
-import { TaskAPI, CommentAPI } from '../services/api';
+import { TaskAPI, CommentAPI, UploadAPI } from '../services/api';
 
 interface TaskDetailModalProps {
     task: Task;
@@ -16,8 +16,10 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ task, onClose,
     const [activeTab, setActiveTab] = useState<'comments' | 'attachments'>('comments');
     const [newComment, setNewComment] = useState('');
     const [loading, setLoading] = useState(false);
+    const [uploading, setUploading] = useState(false);
     const [comments, setComments] = useState<Comment[]>(task.comments || []);
     const [localTask, setLocalTask] = useState<Task>(task);
+    const fileInputRef = useRef<HTMLInputElement>(null);
 
     const assignee = users.find(u => u.id === localTask.assigneeId || u.userId === localTask.assigneeId);
 
@@ -32,6 +34,90 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ task, onClose,
         };
         fetchComments();
     }, [localTask.id, localTask.taskId]);
+
+    const calculateSHA256 = async (file: File) => {
+        try {
+            const buffer = await file.arrayBuffer();
+            const hashBuffer = await crypto.subtle.digest('SHA-256', buffer);
+            const hashArray = Array.from(new Uint8Array(hashBuffer));
+            return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+        } catch (e) {
+            console.warn('Failed to calculate SHA-256', e);
+            return "";
+        }
+    };
+
+    const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+
+        setUploading(true);
+        try {
+            // 1. Get presigned URL
+            const presignData = await UploadAPI.getPresignUpload({
+                fileName: file.name,
+                size: file.size,
+                fileType: file.type,
+                storageType: 2, // Assuming 2 for attachments
+                dir: 'task_attachments'
+            });
+
+            // 2. Upload to storage
+            const uploadRes = await fetch(presignData.uploadUrl, {
+                method: 'PUT',
+                body: file,
+                headers: {
+                    'Content-Type': file.type,
+                },
+            });
+
+            if (!uploadRes.ok) {
+                throw new Error('上传文件失败');
+            }
+
+            // 3. Compute Checksum
+            const checksum = await calculateSHA256(file);
+
+            // 4. Update task attachment via TaskAPI
+            await TaskAPI.editAttachments({
+                attachmentId: 0,
+                taskId: localTask.id || localTask.taskId || 0,
+                filename: file.name,
+                fileUrl: presignData.fileUrl,
+                mimeType: file.type || 'application/octet-stream',
+                sizeBytes: file.size,
+                checksumSha256: checksum
+            });
+
+            // 5. Update local state
+            const newAttachment = {
+                id: Date.now(), // Temporary ID until reload
+                fileName: file.name,
+                fileUrl: presignData.fileUrl,
+                uploadedAt: new Date().toISOString().split('T')[0]
+            };
+
+            const updatedTask = {
+                ...localTask,
+                attachments: [...(localTask.attachments || []), newAttachment]
+            };
+            setLocalTask(updatedTask);
+            setState(prev => ({
+                ...prev,
+                tasks: prev.tasks.map(t => (t.id === localTask.id || t.taskId === localTask.taskId) ? updatedTask : t)
+            }));
+            onUpdate?.();
+
+        } catch (err: any) {
+            console.error(err);
+            alert(err.message || '上传附件失败');
+        } finally {
+            setUploading(false);
+            if (fileInputRef.current) {
+                fileInputRef.current.value = '';
+            }
+        }
+    };
 
     const handleAddComment = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -152,8 +238,8 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ task, onClose,
                                     key={value}
                                     onClick={() => handleStatusChange(value)}
                                     className={`px-4 py-2 rounded-xl text-sm font-bold border transition-all ${localTask.status === value
-                                            ? 'bg-blue-500 text-white border-blue-500 shadow-md shadow-blue-200'
-                                            : 'bg-white text-slate-500 border-slate-200 hover:border-blue-300 hover:bg-blue-50/30'
+                                        ? 'bg-blue-500 text-white border-blue-500 shadow-md shadow-blue-200'
+                                        : 'bg-white text-slate-500 border-slate-200 hover:border-blue-300 hover:bg-blue-50/30'
                                         }`}
                                 >
                                     {statusMap[value]?.label || value}
@@ -244,8 +330,22 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ task, onClose,
                                         </a>
                                     ))
                                 )}
-                                <button className="w-full mt-4 py-3 border-2 border-dashed border-slate-200 rounded-2xl text-slate-400 hover:text-blue-500 hover:border-blue-500 hover:bg-blue-50 transition-all font-bold text-sm flex items-center justify-center gap-2">
-                                    <Paperclip size={18} /> 上传附件
+                                <input
+                                    type="file"
+                                    ref={fileInputRef}
+                                    className="hidden"
+                                    onChange={handleFileUpload}
+                                />
+                                <button
+                                    onClick={() => fileInputRef.current?.click()}
+                                    disabled={uploading}
+                                    className="w-full mt-4 py-3 border-2 border-dashed border-slate-200 rounded-2xl text-slate-400 hover:text-blue-500 hover:border-blue-500 hover:bg-blue-50 transition-all font-bold text-sm flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                                >
+                                    {uploading ? (
+                                        <><Loader2 size={18} className="animate-spin" /> 上传中...</>
+                                    ) : (
+                                        <><Paperclip size={18} /> 上传附件</>
+                                    )}
                                 </button>
                             </div>
                         )}

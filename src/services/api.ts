@@ -191,7 +191,7 @@ export const TaskAPI = {
   addAttachments: (data: { taskId: number; attachments: string[] }) =>
     request<string>('/task/addAttachments', { method: 'POST', body: JSON.stringify(data) }),
 
-  editAttachments: (data: { attachId: number; taskId: number; fileUrl: string; fileName: string }) =>
+  editAttachments: (data: { taskId: number; attachmentId: number; filename: string; fileUrl: string; mimeType: string; sizeBytes: number; checksumSha256: string }) =>
     request<string>('/task/editAttachments', { method: 'POST', body: JSON.stringify(data) }),
 
   addDependency: (data: { taskId: number; processTaskId: number; type: number }) =>
