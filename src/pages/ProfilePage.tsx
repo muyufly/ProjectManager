@@ -1,7 +1,7 @@
-import React, { useContext, useState } from 'react';
+import React, { useContext, useState, useRef } from 'react';
 import { AppContext } from '../constants';
-import { Clock, User as UserIcon, Briefcase, Edit2, X, Save, Search, Key, ShieldCheck, Mail, UserPlus } from 'lucide-react';
-import { UserAPI } from '../services/api';
+import { Clock, User as UserIcon, Briefcase, Edit2, X, Save, Search, Key, ShieldCheck, Mail, UserPlus, Upload, Loader2 } from 'lucide-react';
+import { UserAPI, UploadAPI } from '../services/api';
 import type { User } from '../types';
 
 export const ProfilePage: React.FC = () => {
@@ -21,6 +21,9 @@ export const ProfilePage: React.FC = () => {
     avatar: currentUser?.avatar || ''
   });
   const [loading, setLoading] = useState(false);
+  const [uploadingAvatar, setUploadingAvatar] = useState(false);
+  const [editError, setEditError] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleEdit = () => {
     setEditForm({
@@ -29,12 +32,14 @@ export const ProfilePage: React.FC = () => {
       jobTitle: currentUser?.jobTitle || '',
       avatar: currentUser?.avatar || ''
     });
+    setEditError(null);
     setIsEditing(true);
   };
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
+    setEditError(null);
     try {
       await UserAPI.editInfo(editForm);
       const updatedUser = await UserAPI.getInfo();
@@ -42,9 +47,69 @@ export const ProfilePage: React.FC = () => {
       setIsEditing(false);
     } catch (err) {
       console.error('Failed to update profile:', err);
-      alert('保存失败，请重试');
+      setEditError('保存失败，请重试');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // 验证文件类型
+    if (!file.type.startsWith('image/')) {
+      setEditError('请选择图片文件');
+      return;
+    }
+
+    // 验证文件大小 (最大 5MB)
+    if (file.size > 5 * 1024 * 1024) {
+      setEditError('图片大小不能超过 5MB');
+      return;
+    }
+
+    setEditError(null);
+
+    setUploadingAvatar(true);
+    try {
+      // 1. 获取预签名上传链接
+      const presignData = await UploadAPI.getPresignUpload({
+        fileName: file.name,
+        size: file.size,
+        fileType: file.type,
+        storageType: 1, // 1 表示头像存储
+        dir: 'avatars'
+      });
+
+      // 2. 上传文件到对象存储
+      const uploadRes = await fetch(presignData.uploadUrl, {
+        method: 'PUT',
+        body: file,
+        headers: {
+          'Content-Type': file.type,
+        },
+      });
+
+      if (!uploadRes.ok) {
+        throw new Error('上传失败');
+      }
+
+      // 3. 更新表单中的头像 URL
+      setEditForm(prev => ({ ...prev, avatar: presignData.fileUrl }));
+      setEditError(null);
+    } catch (err) {
+      console.error('Avatar upload failed:', err);
+      // Mock 环境下使用本地预览
+      const localUrl = URL.createObjectURL(file);
+      setEditForm(prev => ({ ...prev, avatar: localUrl }));
+      setEditError('头像上传失败，已使用本地预览（Mock 环境）');
+    } finally {
+      setUploadingAvatar(false);
+      // 清空 input 值，允许重复选择同一文件
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
     }
   };
 
@@ -230,6 +295,51 @@ export const ProfilePage: React.FC = () => {
             <form onSubmit={handleSave} className="p-8 space-y-6">
               {/* Form Fields... */}
               <div className="space-y-4">
+                {/* 头像上传 - 放在最上面 */}
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">头像</label>
+                  <div className="flex items-center gap-4">
+                    {/* 头像预览 */}
+                    <div className="w-16 h-16 rounded-full bg-slate-200 overflow-hidden border-2 border-slate-100 shrink-0">
+                      {editForm.avatar ? (
+                        <img src={editForm.avatar} alt="Avatar preview" className="w-full h-full object-cover" />
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center text-slate-400">
+                          <UserIcon size={24} />
+                        </div>
+                      )}
+                    </div>
+                    {/* 上传按钮 */}
+                    <div className="flex-1">
+                      <input
+                        ref={fileInputRef}
+                        type="file"
+                        accept="image/*"
+                        onChange={handleAvatarUpload}
+                        className="hidden"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => fileInputRef.current?.click()}
+                        disabled={uploadingAvatar}
+                        className="flex items-center gap-2 px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        {uploadingAvatar ? (
+                          <>
+                            <Loader2 size={16} className="animate-spin" />
+                            上传中...
+                          </>
+                        ) : (
+                          <>
+                            <Upload size={16} />
+                            上传头像
+                          </>
+                        )}
+                      </button>
+                      <p className="text-[10px] text-slate-400 mt-1.5">支持 JPG、PNG 格式，最大 5MB</p>
+                    </div>
+                  </div>
+                </div>
                 <div>
                   <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">姓名</label>
                   <input type="text" value={editForm.name} onChange={e => setEditForm({ ...editForm, name: e.target.value })} className="w-full px-4 py-3 bg-slate-50 rounded-2xl border border-slate-100 focus:border-blue-500 outline-none" />
@@ -244,11 +354,16 @@ export const ProfilePage: React.FC = () => {
                     <input type="text" value={editForm.jobTitle} onChange={e => setEditForm({ ...editForm, jobTitle: e.target.value })} className="w-full px-4 py-3 bg-slate-50 rounded-2xl border border-slate-100 focus:border-blue-500 outline-none" />
                   </div>
                 </div>
-                <div>
-                  <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">头像 URL</label>
-                  <input type="text" value={editForm.avatar} onChange={e => setEditForm({ ...editForm, avatar: e.target.value })} className="w-full px-4 py-3 bg-slate-50 rounded-2xl border border-slate-100 focus:border-blue-500 outline-none" />
-                </div>
               </div>
+              {/* 错误信息提示 */}
+              {editError && (
+                <div className="bg-red-50 border border-red-200 rounded-xl p-3 flex items-center gap-2">
+                  <div className="w-5 h-5 rounded-full bg-red-100 flex items-center justify-center shrink-0">
+                    <span className="text-red-500 text-xs font-bold">!</span>
+                  </div>
+                  <span className="text-sm text-red-600 font-medium">{editError}</span>
+                </div>
+              )}
               <div className="flex gap-4 pt-4">
                 <button type="button" onClick={() => setIsEditing(false)} className="flex-1 py-4 font-bold text-slate-500 hover:bg-slate-50 rounded-2xl transition-all">取消</button>
                 <button type="submit" disabled={loading} className="flex-1 py-4 px-6 bg-blue-500 text-white font-bold rounded-2xl shadow-lg shadow-blue-200 hover:bg-blue-600 transition-all flex items-center justify-center gap-2">
