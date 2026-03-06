@@ -55,19 +55,27 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ task, onClose,
         try {
             // 1. Get presigned URL
             const presignData = await UploadAPI.getPresignUpload({
-                fileName: file.name,
-                size: file.size,
-                fileType: file.type,
-                storageType: 2, // Assuming 2 for attachments
-                dir: 'task_attachments'
+                filename: file.name,
+                contentType: file.type,
+                dir: 'PROJECT_FILE',
+                ownerId: localTask.projectId || 0
             });
 
-            // 2. Upload to storage
-            const uploadRes = await fetch(presignData.uploadUrl, {
+            // 2. Use local proxy to bypass CORS
+            const targetUrl = new URL(presignData.uploadUrl);
+            const isDev = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+            const isCdnUrl = targetUrl.hostname.includes('.cdn.');
+
+            const uploadUrl = isDev
+                ? (isCdnUrl ? `/oss-cdn-proxy${targetUrl.pathname}${targetUrl.search}` : `/oss-proxy${targetUrl.pathname}${targetUrl.search}`)
+                : presignData.uploadUrl;
+
+            const uploadRes = await fetch(uploadUrl, {
                 method: 'PUT',
                 body: file,
                 headers: {
                     'Content-Type': file.type,
+                    'x-amz-acl': 'public-read'
                 },
             });
 
@@ -78,12 +86,17 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ task, onClose,
             // 3. Compute Checksum
             const checksum = await calculateSHA256(file);
 
-            // 4. Update task attachment via TaskAPI
+            // 4. Resolve the final public URL
+            const finalFileUrl = presignData.fileUrl ||
+                (presignData.objectKey ? `https://projectmgr.sgp1.cdn.digitaloceanspaces.com/${presignData.objectKey}` : null) ||
+                presignData.uploadUrl.split('?')[0].replace('.digitaloceanspaces.com', '.cdn.digitaloceanspaces.com');
+
+            // 5. Update task attachment via TaskAPI
             await TaskAPI.editAttachments({
                 attachmentId: 0,
                 taskId: localTask.id || localTask.taskId || 0,
                 filename: file.name,
-                fileUrl: presignData.fileUrl,
+                fileUrl: finalFileUrl,
                 mimeType: file.type || 'application/octet-stream',
                 sizeBytes: file.size,
                 checksumSha256: checksum
@@ -93,7 +106,7 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ task, onClose,
             const newAttachment = {
                 id: Date.now(), // Temporary ID until reload
                 fileName: file.name,
-                fileUrl: presignData.fileUrl,
+                fileUrl: finalFileUrl,
                 uploadedAt: new Date().toISOString().split('T')[0]
             };
 

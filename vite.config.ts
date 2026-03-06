@@ -14,8 +14,21 @@ export default defineConfig({
     open: true,
     proxy: {
       '/api': {
-        target: 'https://m1.apifoxmock.com/m1/7799409-7546248-default',
-        changeOrigin: true
+        target: 'https://project.foofish.work',
+        changeOrigin: true,
+
+      },
+      '/oss-proxy': {
+        target: 'https://projectmgr.sgp1.digitaloceanspaces.com',
+        changeOrigin: true,
+        secure: false,
+        rewrite: (path) => path.replace(/^\/oss-proxy/, '')
+      },
+      '/oss-cdn-proxy': {
+        target: 'https://projectmgr.sgp1.cdn.digitaloceanspaces.com',
+        changeOrigin: true,
+        secure: false,
+        rewrite: (path) => path.replace(/^\/oss-cdn-proxy/, '')
       }
     }
   }

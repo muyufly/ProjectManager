@@ -73,14 +73,46 @@ export const AuthAPI = {
  * User API
  */
 export const UserAPI = {
-  getInfo: () => request<any>('/user/info'),
+  getInfo: async () => {
+    const data = await request<any>('/user/info');
 
-  editInfo: (data: Partial<any>) =>
+    // Auto-repair corrupted URL (fixes the double https:// duplication)
+    let finalAvatar = data.avatarUrl || data.avatar || null;
+    if (typeof finalAvatar === 'string' && finalAvatar.includes('https://') && finalAvatar.lastIndexOf('https://') > 0) {
+      finalAvatar = 'https://' + finalAvatar.split('https://').pop();
+    }
+
+    return {
+      ...data,
+      userId: data.userId || data.id || (data.sduId ? parseInt(data.sduId.replace(/\D/g, '')) : 0),
+      id: data.id || data.userId || 0,
+      name: data.realname || data.username || '未知用户',
+      avatar: finalAvatar
+    } as User;
+  },
+
+  editInfo: (data: { username: string; email: string; department: string; role: string; avatarUrl: string | null }) =>
     request<any>('/user/info', { method: 'POST', body: JSON.stringify(data) }),
 
-  getInfoById: (id: string) => request<any>(`/user/info?userId=${id}`),
-  search: (keyword: string, page: number = 1, size: number = 10) =>
-    request<any>(`/user/search?keyword=${keyword}&page=${page}&size=${size}`),
+  getInfoById: (id: string | number) => request<any>(`/user/info?userId=${id}`),
+  search: async (keyword: string, page: number = 1, size: number = 10) => {
+    const res = await request<any>(`/user/search?keyword=${keyword}&page=${page}&size=${size}`);
+    if (res.items) {
+      res.items = res.items.map((u: any) => {
+        let finalAvatar = u.avatarUrl || u.avatar || null;
+        if (typeof finalAvatar === 'string' && finalAvatar.includes('https://') && finalAvatar.lastIndexOf('https://') > 0) {
+          finalAvatar = 'https://' + finalAvatar.split('https://').pop();
+        }
+        return {
+          ...u,
+          userId: u.userId || u.id || 0,
+          name: u.realname || u.username || '用户',
+          avatar: finalAvatar
+        };
+      });
+    }
+    return res;
+  },
   changePassword: (data: any) => request<any>('/changePassword', { method: 'POST', body: JSON.stringify(data) }),
 };
 
@@ -225,7 +257,7 @@ export const CommentAPI = {
  * Upload API
  */
 export const UploadAPI = {
-  getPresignUpload: (data: { fileName: string; size: number; fileType: string; storageType: number; dir?: string }) =>
+  getPresignUpload: (data: { dir: 'AVATAR' | 'PROJECT_FILE'; ownerId: number; filename: string; contentType: string }) =>
     request<any>(`/presign/presign-upload`, { method: 'POST', body: JSON.stringify(data) }),
 };
 

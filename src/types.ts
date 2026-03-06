@@ -17,12 +17,20 @@ export enum TaskPriority {
 export interface User {
   id: number;
   userId?: number;
-  username?: string;
+  username: string;
+  email?: string;
+  department?: string;
+  role: string;
+  sduId?: string;
+  realname?: string;
+  avatarUrl?: string;
+  isActive?: boolean;
+  createdAt?: string;
+  updatedAt?: string;
+  deletedAt?: string;
+  // Legacy fields for UI compatibility
   name: string;
   avatar: string;
-  avatarUrl?: string; // from api
-  role: 'Admin' | 'Manager' | 'Member' | string;
-  department?: string;
   jobTitle?: string;
 }
 

@@ -1,12 +1,31 @@
-import React, { useContext, useState, useRef } from 'react';
+import React, { useContext, useState, useRef, useEffect } from 'react';
 import { AppContext } from '../constants';
-import { Clock, User as UserIcon, Briefcase, Edit2, X, Save, Search, Key, ShieldCheck, Mail, UserPlus, Upload, Loader2 } from 'lucide-react';
-import { UserAPI, UploadAPI } from '../services/api';
+import {
+  User as UserIcon,
+  Edit2,
+  X,
+  Save,
+  Search,
+  Key,
+  ShieldCheck,
+  Mail,
+  Upload,
+  Loader2,
+  BadgeCheck,
+  Building2,
+  CreditCard,
+  Hash,
+  Activity,
+  Calendar,
+  Lock,
+  Camera
+} from 'lucide-react';
+import { UserAPI, UploadAPI, AuthAPI } from '../services/api';
 import type { User } from '../types';
 
 export const ProfilePage: React.FC = () => {
   const { state, setState } = useContext(AppContext);
-  const { currentUser, projects, workLogs } = state;
+  const { currentUser } = state;
   const [isEditing, setIsEditing] = useState(false);
   const [isChangingPassword, setIsChangingPassword] = useState(false);
   const [passwordForm, setPasswordForm] = useState({ oldPassword: '', newPassword: '' });
@@ -15,23 +34,30 @@ export const ProfilePage: React.FC = () => {
   const [searching, setSearching] = useState(false);
 
   const [editForm, setEditForm] = useState({
-    name: currentUser?.name || '',
+    username: currentUser?.username || '',
+    email: currentUser?.email || '',
     department: currentUser?.department || '',
-    jobTitle: currentUser?.jobTitle || '',
-    avatar: currentUser?.avatar || ''
+    role: currentUser?.role || '',
+    avatarUrl: currentUser?.avatarUrl || currentUser?.avatar || ''
   });
   const [loading, setLoading] = useState(false);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
   const [editError, setEditError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  useEffect(() => {
+    if (currentUser) {
+      setEditForm({
+        username: currentUser.username || '',
+        email: currentUser.email || '',
+        department: currentUser.department || '',
+        role: currentUser.role || '',
+        avatarUrl: currentUser.avatarUrl || currentUser.avatar || ''
+      });
+    }
+  }, [currentUser]);
+
   const handleEdit = () => {
-    setEditForm({
-      name: currentUser?.name || '',
-      department: currentUser?.department || '',
-      jobTitle: currentUser?.jobTitle || '',
-      avatar: currentUser?.avatar || ''
-    });
     setEditError(null);
     setIsEditing(true);
   };
@@ -40,11 +66,29 @@ export const ProfilePage: React.FC = () => {
     e.preventDefault();
     setLoading(true);
     setEditError(null);
+
+    // Strictly follow request payload requirements: all 5 fields must be present
+    const submitPayload = {
+      username: editForm.username || '',
+      email: editForm.email || '',
+      department: editForm.department || '',
+      role: editForm.role || '',
+      avatarUrl: editForm.avatarUrl || null // Respect backend requirement for null
+    };
+
+    // Safety: don't save blob urls
+    if (submitPayload.avatarUrl && submitPayload.avatarUrl.startsWith('blob:')) {
+      setEditError('头像上传中或已失败，请刷新后再试');
+      setLoading(false);
+      return;
+    }
+
     try {
-      await UserAPI.editInfo(editForm);
+      await UserAPI.editInfo(submitPayload);
       const updatedUser = await UserAPI.getInfo();
       setState(prev => ({ ...prev, currentUser: updatedUser }));
       setIsEditing(false);
+      alert('所有资料已成功同步到云端');
     } catch (err) {
       console.error('Failed to update profile:', err);
       setEditError('保存失败，请重试');
@@ -57,59 +101,69 @@ export const ProfilePage: React.FC = () => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    // 验证文件类型
     if (!file.type.startsWith('image/')) {
       setEditError('请选择图片文件');
       return;
     }
 
-    // 验证文件大小 (最大 5MB)
     if (file.size > 5 * 1024 * 1024) {
       setEditError('图片大小不能超过 5MB');
       return;
     }
 
-    setEditError(null);
-
     setUploadingAvatar(true);
+    setEditError(null);
     try {
-      // 1. 获取预签名上传链接
       const presignData = await UploadAPI.getPresignUpload({
-        fileName: file.name,
-        size: file.size,
-        fileType: file.type,
-        storageType: 1, // 1 表示头像存储
-        dir: 'avatars'
+        filename: file.name,
+        contentType: file.type,
+        dir: 'AVATAR',
+        ownerId: currentUser?.userId || 0
       });
 
-      // 2. 上传文件到对象存储
-      const uploadRes = await fetch(presignData.uploadUrl, {
-        method: 'PUT',
-        body: file,
-        headers: {
-          'Content-Type': file.type,
-        },
+      const targetUrl = new URL(presignData.uploadUrl);
+      const isDev = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+      const isCdnUrl = targetUrl.hostname.includes('.cdn.');
+
+      const uploadUrl = isDev
+        ? (isCdnUrl ? `/oss-cdn-proxy${targetUrl.pathname}${targetUrl.search}` : `/oss-proxy${targetUrl.pathname}${targetUrl.search}`)
+        : presignData.uploadUrl;
+
+      console.log('Starting XHR Upload to:', uploadUrl);
+
+      // Using XHR instead of fetch to bypass potential extension 'window.fetch' interception
+      await new Promise((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+        xhr.open('PUT', uploadUrl);
+        xhr.setRequestHeader('Content-Type', file.type);
+        xhr.setRequestHeader('x-amz-acl', 'public-read');
+
+        xhr.onload = () => {
+          if (xhr.status >= 200 && xhr.status < 300) {
+            resolve(xhr.response);
+          } else {
+            reject(new Error(`Upload failed with status ${xhr.status}: ${xhr.responseText}`));
+          }
+        };
+        xhr.onerror = () => reject(new Error('网络请求错误 (XHR Error)'));
+        xhr.send(file);
       });
 
-      if (!uploadRes.ok) {
-        throw new Error('上传失败');
-      }
+      // Resolve the final public URL correctly to avoid duplication
+      const urlObj = new URL(presignData.uploadUrl);
+      const cleanPath = presignData.objectKey || urlObj.pathname;
+      const finalFileUrl = `https://projectmgr.sgp1.cdn.digitaloceanspaces.com/${cleanPath.replace(/^\//, '')}`;
 
-      // 3. 更新表单中的头像 URL
-      setEditForm(prev => ({ ...prev, avatar: presignData.fileUrl }));
-      setEditError(null);
+      setEditForm(prev => ({ ...prev, avatarUrl: finalFileUrl }));
+      alert('头像已上传！请点击“保存更改”来更新资料。');
     } catch (err) {
-      console.error('Avatar upload failed:', err);
-      // Mock 环境下使用本地预览
+      console.error('Upload Error:', err);
       const localUrl = URL.createObjectURL(file);
-      setEditForm(prev => ({ ...prev, avatar: localUrl }));
-      setEditError('头像上传失败，已使用本地预览（Mock 环境）');
+      setEditForm(prev => ({ ...prev, avatarUrl: localUrl }));
+      setEditError(`预览成功但同步失败: ${(err as Error).message}`);
     } finally {
       setUploadingAvatar(false);
-      // 清空 input 值，允许重复选择同一文件
-      if (fileInputRef.current) {
-        fileInputRef.current.value = '';
-      }
+      if (fileInputRef.current) fileInputRef.current.value = '';
     }
   };
 
@@ -131,7 +185,7 @@ export const ProfilePage: React.FC = () => {
     e.preventDefault();
     setLoading(true);
     try {
-      await UserAPI.changePassword(passwordForm);
+      await AuthAPI.changePassword(passwordForm);
       alert('密码修改成功');
       setIsChangingPassword(false);
       setPasswordForm({ oldPassword: '', newPassword: '' });
@@ -143,336 +197,333 @@ export const ProfilePage: React.FC = () => {
   };
 
   return (
-    <div className="h-full flex flex-col gap-6 overflow-y-auto pb-10 pr-2 scrollbar-thin scrollbar-thumb-slate-200 relative">
-      {/* Personal Info Header */}
-      <div className="flex items-center justify-between">
-        <div className="bg-blue-100 px-6 py-2.5 rounded-xl shadow-sm w-fit inline-flex items-center gap-2">
-          <UserIcon size={18} className="text-blue-600" />
-          <h2 className="text-xl font-bold text-slate-800">个人中心</h2>
+    <div className="h-full flex flex-col gap-6 overflow-y-auto pb-10 pr-4 scrollbar-thin scrollbar-thumb-slate-200">
+
+      {/* Page Header */}
+      <div className="flex items-center justify-between mb-4">
+        <div>
+          <h1 className="text-3xl font-black text-slate-800 tracking-tight">个人中心</h1>
+          <p className="text-slate-500 font-medium mt-1">管理您的个人信息与账号安全</p>
         </div>
-        <div className="flex gap-3">
-          <button
-            onClick={() => setIsChangingPassword(true)}
-            className="flex items-center gap-2 px-4 py-2.5 bg-white border border-slate-200 text-slate-700 font-bold rounded-xl hover:bg-slate-50 transition-all shadow-sm"
-          >
-            <Key size={16} />
-            修改密码
-          </button>
+        {!isEditing ? (
           <button
             onClick={handleEdit}
-            className="flex items-center gap-2 px-4 py-2.5 bg-blue-500 text-white font-bold rounded-xl hover:bg-blue-600 transition-all shadow-md shadow-blue-100"
+            className="bg-white hover:bg-slate-50 text-slate-700 px-6 py-2.5 rounded-2xl font-bold transition-all flex items-center gap-2 shadow-sm border border-slate-200"
           >
-            <Edit2 size={16} />
-            编辑资料
+            <Edit2 size={16} /> 编辑资料
+          </button>
+        ) : (
+          <div className="flex gap-2">
+            <button
+              onClick={() => setIsEditing(false)}
+              className="bg-white hover:bg-slate-100 text-slate-600 px-5 py-2.5 rounded-2xl font-bold transition-all flex items-center gap-2 border border-slate-200 shadow-sm"
+            >
+              取消
+            </button>
+            <button
+              onClick={handleSave}
+              disabled={loading}
+              className="bg-blue-600 text-white px-6 py-2.5 rounded-2xl font-bold hover:bg-blue-700 transition-all flex items-center gap-2 shadow-lg shadow-blue-200 disabled:opacity-50"
+            >
+              {loading ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />} 保存更改
+            </button>
+          </div>
+        )}
+      </div>
+
+      <div className="grid grid-cols-1 xl:grid-cols-4 gap-8">
+
+        {/* Left Column: Profile Card & Security */}
+        <div className="xl:col-span-1 space-y-6">
+          {/* Main ID Card */}
+          <div className="bg-white rounded-3xl p-6 shadow-xl shadow-slate-200/50 border border-slate-100 flex flex-col items-center relative overflow-hidden text-center">
+            {/* Background design */}
+            <div className="absolute top-0 left-0 right-0 h-32 bg-gradient-to-br from-blue-500 to-indigo-600 opacity-90"></div>
+
+            <div className="relative mt-8 mb-4 group">
+              <div className="w-32 h-32 rounded-full border-4 border-white bg-white shadow-lg overflow-hidden transition-transform duration-300 group-hover:scale-105">
+                <img
+                  src={(isEditing ? editForm.avatarUrl : currentUser?.avatar) || undefined}
+                  alt="Avatar"
+                  className={`w-full h-full object-cover transition-opacity duration-300 ${(!(isEditing ? editForm.avatarUrl : currentUser?.avatar)) ? 'opacity-0' : 'opacity-100'}`}
+                />
+                {(!(isEditing ? editForm.avatarUrl : currentUser?.avatar)) && (
+                  <div className="absolute inset-0 flex items-center justify-center bg-slate-100 text-slate-300">
+                    <UserIcon size={56} />
+                  </div>
+                )}
+                {isEditing && (
+                  <div
+                    onClick={() => fileInputRef.current?.click()}
+                    className="absolute inset-0 bg-black/50 flex flex-col items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer text-white"
+                  >
+                    {uploadingAvatar ? <Loader2 className="animate-spin mb-1" size={20} /> : <Camera size={20} className="mb-1" />}
+                    <span className="text-xs font-bold">更换</span>
+                  </div>
+                )}
+              </div>
+              <input type="file" ref={fileInputRef} onChange={handleAvatarUpload} className="hidden" accept="image/*" />
+            </div>
+
+            <h2 className="text-2xl font-black text-slate-800 flex items-center justify-center gap-2">
+              {currentUser?.realname || currentUser?.username}
+              <BadgeCheck size={20} className="text-blue-500" />
+            </h2>
+            <p className="text-slate-500 font-medium text-sm mt-1">{currentUser?.role || '普通成员'}</p>
+
+            <div className="w-full h-px bg-slate-100 my-6"></div>
+
+            <div className="w-full space-y-4 text-left">
+              <div className="flex items-center gap-3 text-sm">
+                <div className="w-8 h-8 rounded-lg bg-blue-50 text-blue-500 flex items-center justify-center"><CreditCard size={16} /></div>
+                <div>
+                  <p className="text-xs font-bold font-sans text-slate-400 uppercase tracking-widest">工号 / 学号</p>
+                  <p className="font-bold text-slate-700">{currentUser?.sduId || '未绑定'}</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-3 text-sm">
+                <div className="w-8 h-8 rounded-lg bg-indigo-50 text-indigo-500 flex items-center justify-center"><Calendar size={16} /></div>
+                <div>
+                  <p className="text-xs font-bold font-sans text-slate-400 uppercase tracking-widest">注册时间</p>
+                  <p className="font-bold text-slate-700">{currentUser?.createdAt ? new Date(currentUser.createdAt).toLocaleDateString() : '未知'}</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-3 text-sm">
+                <div className="w-8 h-8 rounded-lg bg-emerald-50 text-emerald-500 flex items-center justify-center"><Activity size={16} /></div>
+                <div>
+                  <p className="text-xs font-bold font-sans text-slate-400 uppercase tracking-widest">账号状态</p>
+                  <p className="font-bold text-emerald-600 flex items-center gap-1.5">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                    {currentUser?.isActive !== false ? '正常激活' : '已停用'}
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Security Action */}
+          <button
+            onClick={() => setIsChangingPassword(true)}
+            className="w-full bg-white rounded-2xl p-4 shadow-sm border border-slate-100 hover:border-blue-200 hover:shadow-md hover:bg-blue-50/50 transition-all group flex items-center justify-between"
+          >
+            <div className="flex items-center gap-4">
+              <div className="w-10 h-10 bg-slate-50 group-hover:bg-white rounded-xl flex items-center justify-center text-slate-500 group-hover:text-blue-600 transition-colors shadow-sm">
+                <ShieldCheck size={20} />
+              </div>
+              <div className="text-left">
+                <p className="text-sm font-black text-slate-800 transition-colors">修改登录密码</p>
+                <p className="text-xs font-bold text-slate-400">定期更新以保护安全</p>
+              </div>
+            </div>
+            <Key size={16} className="text-slate-300 group-hover:text-blue-500 transition-colors" />
           </button>
         </div>
-      </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-2 space-y-6">
-          {currentUser && (
-            <div className="bg-white rounded-3xl shadow-sm border border-slate-200 p-8 flex flex-col md:flex-row items-center gap-8 md:gap-12 relative overflow-hidden">
-              <div className="absolute top-0 right-0 w-64 h-64 bg-slate-50 rounded-full translate-x-32 -translate-y-32"></div>
-              <div className="w-32 h-32 rounded-full bg-slate-200 overflow-hidden border-4 border-white shadow-xl ring-1 ring-slate-100 shrink-0 relative z-10">
-                <img src={currentUser.avatar} alt="Profile" className="w-full h-full object-cover" />
-              </div>
-              <div className="space-y-4 flex-1 relative z-10 w-full">
-                <div className="flex items-center border-b border-slate-100 pb-2">
-                  <span className="font-bold text-slate-400 w-24 uppercase text-[10px] tracking-widest">姓名</span>
-                  <span className="text-2xl text-slate-800 font-black">{currentUser.name}</span>
-                </div>
-                <div className="flex items-center border-b border-slate-100 pb-2">
-                  <span className="font-bold text-slate-400 w-24 uppercase text-[10px] tracking-widest">院系</span>
-                  <span className="text-lg text-slate-700 font-bold">{currentUser.department || '校开发委员会'}</span>
-                </div>
-                <div className="flex items-center pb-2">
-                  <span className="font-bold text-slate-400 w-24 uppercase text-[10px] tracking-widest">职位</span>
-                  <span className="text-lg text-slate-700 font-bold">{currentUser.jobTitle || currentUser.role}</span>
-                </div>
-              </div>
-            </div>
-          )}
+        {/* Right Column: Settings Form & Search */}
+        <div className="xl:col-span-3 space-y-6">
 
-          {/* Work Logs */}
-          <div className="bg-white rounded-3xl shadow-sm border border-slate-200 p-8">
-            <h3 className="text-lg font-bold text-slate-800 mb-6 flex items-center gap-2">
-              <Clock size={20} className="text-blue-500" /> 工作动态
+          {/* Main Info Form */}
+          <div className="bg-white rounded-3xl p-8 shadow-xl shadow-slate-200/50 border border-slate-100 relative">
+            {editError && (
+              <div className="mb-6 p-4 bg-red-50 border border-red-100 text-red-600 rounded-2xl text-sm font-bold flex items-center gap-3 animate-in fade-in slide-in-from-top-2">
+                <Lock size={18} /> {editError}
+              </div>
+            )}
+
+            <h3 className="text-lg font-black text-slate-800 mb-6 flex items-center gap-2">
+              <UserIcon size={20} className="text-blue-600" /> 基本资料设置
             </h3>
-            <div className="space-y-8 relative before:absolute before:inset-0 before:ml-5 before:-translate-x-px before:h-full before:w-0.5 before:bg-slate-100">
-              {workLogs.length === 0 ? (
-                <div className="pl-12 text-slate-400 italic py-4">暂无动态</div>
-              ) : (
-                workLogs.map((log) => (
-                  <div key={log.id} className="relative flex items-center group">
-                    <div className="flex items-center justify-center w-10 h-10 rounded-full border-4 border-white bg-slate-200 group-hover:bg-blue-500 transition-colors shadow-sm shrink-0 z-10">
-                      <Clock size={16} className="text-white" />
-                    </div>
-                    <div className="ml-6 bg-slate-50 p-5 rounded-2xl border border-slate-100 flex-1 hover:border-blue-200 transition-all">
-                      <div className="flex items-center justify-between mb-2">
-                        <span className="font-bold text-slate-800">{log.date}</span>
-                        <span className="text-[10px] font-bold text-blue-600 bg-blue-50 px-2 py-1 rounded-full uppercase">{log.hours} HOURS</span>
-                      </div>
-                      <p className="text-slate-600 text-sm">{log.content}</p>
-                    </div>
-                  </div>
-                ))
-              )}
-            </div>
-          </div>
-        </div>
 
-        <div className="flex flex-col gap-6">
-          {/* User Search */}
-          <div className="bg-white rounded-3xl shadow-sm border border-slate-200 p-6">
-            <h3 className="text-lg font-bold text-slate-800 mb-4 flex items-center gap-2">
-              <Search size={20} className="text-blue-500" /> 用户搜索
+            <form onSubmit={handleSave} className="space-y-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="space-y-2">
+                  <label className="text-xs font-black text-slate-500 ml-1">用户名昵称</label>
+                  <div className="relative group">
+                    <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-slate-400 group-focus-within:text-blue-500">
+                      <Hash size={16} />
+                    </div>
+                    <input
+                      type="text"
+                      value={isEditing ? editForm.username : (currentUser?.username || '未设置')}
+                      onChange={(e) => setEditForm(prev => ({ ...prev, username: e.target.value }))}
+                      disabled={!isEditing}
+                      className="w-full pl-11 pr-4 py-3 bg-slate-50 disabled:bg-slate-50/50 text-slate-800 font-bold rounded-xl border border-slate-200 disabled:border-transparent focus:bg-white focus:border-blue-500 focus:ring-4 focus:ring-blue-50 outline-none transition-all"
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-xs font-black text-slate-500 ml-1">真实姓名 (实名)</label>
+                  <div className="relative">
+                    <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-slate-400">
+                      <UserIcon size={16} />
+                    </div>
+                    <input
+                      type="text"
+                      value={currentUser?.realname || '未认证'}
+                      disabled
+                      className="w-full pl-11 pr-4 py-3 bg-slate-100/50 text-slate-500 font-bold rounded-xl border border-transparent outline-none cursor-not-allowed"
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-xs font-black text-slate-500 ml-1">电子邮箱</label>
+                  <div className="relative group">
+                    <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-slate-400 group-focus-within:text-blue-500">
+                      <Mail size={16} />
+                    </div>
+                    <input
+                      type="email"
+                      value={isEditing ? editForm.email : (currentUser?.email || '')}
+                      onChange={(e) => setEditForm(prev => ({ ...prev, email: e.target.value }))}
+                      disabled={!isEditing}
+                      placeholder="user@sdu.edu.cn"
+                      className="w-full pl-11 pr-4 py-3 bg-slate-50 disabled:bg-slate-50/50 text-slate-800 font-bold rounded-xl border border-slate-200 disabled:border-transparent focus:bg-white focus:border-blue-500 focus:ring-4 focus:ring-blue-50 outline-none transition-all"
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-xs font-black text-slate-500 ml-1">所属部门</label>
+                  <div className="relative group">
+                    <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-slate-400 group-focus-within:text-blue-500">
+                      <Building2 size={16} />
+                    </div>
+                    <input
+                      type="text"
+                      value={isEditing ? editForm.department : (currentUser?.department || '')}
+                      onChange={(e) => setEditForm(prev => ({ ...prev, department: e.target.value }))}
+                      disabled={!isEditing}
+                      placeholder="网络中心"
+                      className="w-full pl-11 pr-4 py-3 bg-slate-50 disabled:bg-slate-50/50 text-slate-800 font-bold rounded-xl border border-slate-200 disabled:border-transparent focus:bg-white focus:border-blue-500 focus:ring-4 focus:ring-blue-50 outline-none transition-all"
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-xs font-black text-slate-500 ml-1">身份角色 / Identity</label>
+                  <div className="relative group">
+                    <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-slate-400 group-focus-within:text-emerald-500">
+                      <BadgeCheck size={16} />
+                    </div>
+                    <input
+                      type="text"
+                      value={isEditing ? editForm.role : (currentUser?.role || '普通成员')}
+                      onChange={(e) => setEditForm(prev => ({ ...prev, role: e.target.value }))}
+                      disabled={!isEditing}
+                      placeholder="例如: 开发工程师"
+                      className="w-full pl-11 pr-4 py-3 bg-slate-50 disabled:bg-slate-50/50 text-slate-800 font-bold rounded-xl border border-slate-200 disabled:border-transparent focus:bg-white focus:border-emerald-500 focus:ring-4 focus:ring-emerald-50 outline-none transition-all"
+                    />
+                  </div>
+                </div>
+              </div>
+            </form>
+          </div>
+
+          {/* Directory Search Block */}
+          <div className="bg-white rounded-3xl p-8 shadow-xl shadow-slate-200/50 border border-slate-100">
+            <h3 className="text-lg font-black text-slate-800 mb-6 flex items-center gap-2">
+              <Search className="text-blue-600" size={20} /> 组织架构搜索
             </h3>
-            <form onSubmit={handleSearch} className="relative mb-4">
-              <input
-                type="text"
-                value={searchQuery}
-                onChange={e => setSearchQuery(e.target.value)}
-                placeholder="输入姓名搜索..."
-                className="w-full pl-4 pr-10 py-2.5 bg-slate-50 rounded-xl border border-slate-200 focus:border-blue-500 outline-none text-sm transition-all"
-              />
-              <button type="submit" className="absolute right-2 top-2 p-1 text-slate-400 hover:text-blue-500 transition-colors">
-                <Search size={18} />
+
+            <form onSubmit={handleSearch} className="relative flex items-center gap-3 mb-6">
+              <div className="relative flex-1">
+                <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+                <input
+                  type="text"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder="输入工号、姓名或部门进行匹配查询..."
+                  className="w-full pl-12 pr-4 py-3.5 bg-slate-50 rounded-xl border border-slate-200 focus:bg-white focus:border-blue-500 focus:ring-4 focus:ring-blue-50 outline-none transition-all font-bold text-slate-700"
+                />
+              </div>
+              <button
+                type="submit"
+                disabled={searching}
+                className="bg-slate-800 hover:bg-slate-700 text-white px-8 py-3.5 rounded-xl font-bold transition-all disabled:opacity-50 min-w-[100px] flex justify-center"
+              >
+                {searching ? <Loader2 className="animate-spin" size={20} /> : '查找'}
               </button>
             </form>
 
-            <div className="space-y-3 max-h-[300px] overflow-y-auto pr-1">
-              {searching ? <div className="text-center py-4 text-slate-400 text-sm">搜索中...</div> :
-                searchResults.length === 0 && searchQuery ? <div className="text-center py-4 text-slate-400 text-sm">未找到相关用户</div> :
-                  searchResults.map(u => (
-                    <div key={u.userId || u.id} className="flex items-center gap-3 p-2 rounded-xl hover:bg-slate-50 transition-colors group">
-                      <img src={u.avatar} className="w-8 h-8 rounded-full" alt="" />
-                      <div className="flex-1 min-w-0">
-                        <div className="text-sm font-bold text-slate-800 truncate">{u.name}</div>
-                        <div className="text-[10px] text-slate-400 truncate">{u.department || 'SDU'}</div>
-                      </div>
-                      <button className="opacity-0 group-hover:opacity-100 p-1.5 text-blue-500 hover:bg-blue-50 rounded-lg transition-all" title="邀请">
-                        <UserPlus size={16} />
-                      </button>
+            {searchResults.length > 0 && (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 animate-in fade-in slide-in-from-bottom-2">
+                {searchResults.map(u => (
+                  <div key={u.id || u.userId} className="flex items-center gap-4 p-3 border border-slate-100 bg-slate-50/50 rounded-2xl hover:bg-white hover:shadow-md hover:border-blue-100 transition-all cursor-default group">
+                    <img src={u.avatar} className="w-12 h-12 rounded-xl object-cover" alt="" />
+                    <div className="flex-1 overflow-hidden">
+                      <h4 className="text-sm font-bold text-slate-800 truncate">{u.name}</h4>
+                      <p className="text-xs text-slate-400 truncate">{u.department || '未分配部门'}</p>
                     </div>
-                  ))
-              }
-            </div>
-          </div>
-
-          {/* Status Stats */}
-          <div className="bg-indigo-600 rounded-3xl shadow-xl p-8 text-white relative overflow-hidden group">
-            <div className="absolute top-0 left-0 w-full h-full bg-gradient-to-br from-indigo-500/50 to-transparent"></div>
-            <ShieldCheck size={120} className="absolute -bottom-10 -right-10 text-white/10 group-hover:scale-110 transition-transform duration-700" />
-            <div className="relative z-10">
-              <h4 className="font-bold text-indigo-100 text-xs uppercase tracking-widest mb-4">项目参与度</h4>
-              <div className="text-5xl font-black mb-2">{projects.length}</div>
-              <p className="text-indigo-100 text-sm">活跃项目总数</p>
-              <div className="mt-8 pt-6 border-t border-indigo-500/30 flex justify-between">
-                <div>
-                  <div className="text-xl font-bold">12</div>
-                  <div className="text-[10px] text-indigo-200 uppercase">已完成任务</div>
-                </div>
-                <div>
-                  <div className="text-xl font-bold">4</div>
-                  <div className="text-[10px] text-indigo-200 uppercase">待办事项</div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Edit Profile Modal */}
-      {isEditing && (
-        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-lg overflow-hidden border border-white">
-            <div className="bg-slate-50 px-8 py-6 border-b border-slate-100 flex items-center justify-between">
-              <h3 className="text-lg font-black text-slate-800 uppercase tracking-widest">编辑资料</h3>
-              <button onClick={() => setIsEditing(false)} className="p-2 hover:bg-slate-200 rounded-full transition-colors">
-                <X size={20} className="text-slate-500" />
-              </button>
-            </div>
-            <form onSubmit={handleSave} className="p-8 space-y-6">
-              {/* Form Fields... */}
-              <div className="space-y-4">
-                {/* 头像上传 - 放在最上面 */}
-                <div>
-                  <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">头像</label>
-                  <div className="flex items-center gap-4">
-                    {/* 头像预览 */}
-                    <div className="w-16 h-16 rounded-full bg-slate-200 overflow-hidden border-2 border-slate-100 shrink-0">
-                      {editForm.avatar ? (
-                        <img src={editForm.avatar} alt="Avatar preview" className="w-full h-full object-cover" />
-                      ) : (
-                        <div className="w-full h-full flex items-center justify-center text-slate-400">
-                          <UserIcon size={24} />
-                        </div>
-                      )}
-                    </div>
-                    {/* 上传按钮 */}
-                    <div className="flex-1">
-                      <input
-                        ref={fileInputRef}
-                        type="file"
-                        accept="image/*"
-                        onChange={handleAvatarUpload}
-                        className="hidden"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => fileInputRef.current?.click()}
-                        disabled={uploadingAvatar}
-                        className="flex items-center gap-2 px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-                      >
-                        {uploadingAvatar ? (
-                          <>
-                            <Loader2 size={16} className="animate-spin" />
-                            上传中...
-                          </>
-                        ) : (
-                          <>
-                            <Upload size={16} />
-                            上传头像
-                          </>
-                        )}
-                      </button>
-                      <p className="text-[10px] text-slate-400 mt-1.5">支持 JPG、PNG 格式，最大 5MB</p>
-                    </div>
-                  </div>
-                </div>
-                <div>
-                  <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">姓名</label>
-                  <input type="text" value={editForm.name} onChange={e => setEditForm({ ...editForm, name: e.target.value })} className="w-full px-4 py-3 bg-slate-50 rounded-2xl border border-slate-100 focus:border-blue-500 outline-none" />
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">院系</label>
-                    <input type="text" value={editForm.department} onChange={e => setEditForm({ ...editForm, department: e.target.value })} className="w-full px-4 py-3 bg-slate-50 rounded-2xl border border-slate-100 focus:border-blue-500 outline-none" />
-                  </div>
-                  <div>
-                    <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">职位</label>
-                    <input type="text" value={editForm.jobTitle} onChange={e => setEditForm({ ...editForm, jobTitle: e.target.value })} className="w-full px-4 py-3 bg-slate-50 rounded-2xl border border-slate-100 focus:border-blue-500 outline-none" />
-                  </div>
-                </div>
-              </div>
-              {/* 错误信息提示 */}
-              {editError && (
-                <div className="bg-red-50 border border-red-200 rounded-xl p-3 flex items-center gap-2">
-                  <div className="w-5 h-5 rounded-full bg-red-100 flex items-center justify-center shrink-0">
-                    <span className="text-red-500 text-xs font-bold">!</span>
-                  </div>
-                  <span className="text-sm text-red-600 font-medium">{editError}</span>
-                </div>
-              )}
-              <div className="flex gap-4 pt-4">
-                <button type="button" onClick={() => setIsEditing(false)} className="flex-1 py-4 font-bold text-slate-500 hover:bg-slate-50 rounded-2xl transition-all">取消</button>
-                <button type="submit" disabled={loading} className="flex-1 py-4 px-6 bg-blue-500 text-white font-bold rounded-2xl shadow-lg shadow-blue-200 hover:bg-blue-600 transition-all flex items-center justify-center gap-2">
-                  <Save size={18} /> 保存更改
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* Change Password Modal */}
-      {isChangingPassword && (
-        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden border border-white">
-            <div className="bg-slate-50 px-8 py-6 border-b border-slate-100 flex items-center justify-between">
-              <h3 className="text-lg font-black text-slate-800 uppercase tracking-widest">修改密码</h3>
-              <button onClick={() => setIsChangingPassword(false)} className="p-2 hover:bg-slate-200 rounded-full transition-colors">
-                <X size={20} className="text-slate-500" />
-              </button>
-            </div>
-            <form onSubmit={handleChangePassword} className="p-8 space-y-6">
-              <div className="space-y-4">
-                <div>
-                  <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">旧密码</label>
-                  <input type="password" required value={passwordForm.oldPassword} onChange={e => setPasswordForm({ ...passwordForm, oldPassword: e.target.value })} className="w-full px-4 py-3 bg-slate-50 rounded-2xl border border-slate-100 focus:border-blue-500 outline-none" />
-                </div>
-                <div>
-                  <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">新密码</label>
-                  <input type="password" required value={passwordForm.newPassword} onChange={e => setPasswordForm({ ...passwordForm, newPassword: e.target.value })} className="w-full px-4 py-3 bg-slate-50 rounded-2xl border border-slate-100 focus:border-blue-500 outline-none" />
-                </div>
-              </div>
-              <button type="submit" disabled={loading} className="w-full py-4 bg-slate-800 text-white font-bold rounded-2xl shadow-xl hover:bg-slate-900 transition-all flex items-center justify-center gap-2">
-                {loading ? '同步中...' : <><Key size={18} /> 确认修改</>}
-              </button>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* Work Logs Section */}
-      <div className="bg-blue-100 px-6 py-2.5 rounded-xl shadow-sm w-fit inline-flex items-center gap-2 mt-4">
-        <Clock size={18} className="text-blue-600" />
-        <h2 className="text-xl font-bold text-slate-800">工作日志</h2>
-      </div>
-
-      <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-8">
-        <div className="space-y-8 relative before:absolute before:inset-0 before:ml-5 before:-translate-x-px md:before:mx-auto md:before:translate-x-0 before:h-full before:w-0.5 before:bg-slate-200">
-          {workLogs.map((log) => (
-            <div key={log.id} className="relative flex items-center justify-between md:justify-normal md:odd:flex-row-reverse group">
-              {/* Icon */}
-              <div className="flex items-center justify-center w-10 h-10 rounded-full border-4 border-white bg-slate-300 group-hover:bg-blue-500 transition-colors shadow shrink-0 md:order-1 md:group-odd:-translate-x-1/2 md:group-even:translate-x-1/2 z-10">
-                <Clock size={16} className="text-white" />
-              </div>
-
-              {/* Content Card */}
-              <div className="w-[calc(100%-4rem)] md:w-[calc(50%-2.5rem)] bg-slate-50 p-5 rounded-xl border border-slate-100 shadow-sm hover:shadow-md transition-all group-hover:border-blue-200">
-                <div className="flex items-center justify-between space-x-2 mb-2">
-                  <span className="font-bold text-slate-800 text-lg">{log.date}</span>
-                  <span className="text-xs font-bold text-blue-600 bg-blue-100 px-2 py-1 rounded-full">{log.hours}小时工作</span>
-                </div>
-                <p className="text-slate-600 text-sm leading-relaxed">
-                  {log.content}
-                </p>
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {/* My Projects Section */}
-      <div className="bg-blue-100 px-6 py-2.5 rounded-xl shadow-sm w-fit inline-flex items-center gap-2 mt-4">
-        <Briefcase size={18} className="text-blue-600" />
-        <h2 className="text-xl font-bold text-slate-800">我的项目</h2>
-      </div>
-
-      <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full text-left">
-            <thead className="bg-slate-50 border-b border-slate-200">
-              <tr>
-                <th className="px-6 py-5 text-center font-bold text-slate-700 uppercase text-xs tracking-wider w-1/4">项目名称</th>
-                <th className="px-6 py-5 text-center font-bold text-slate-700 uppercase text-xs tracking-wider w-1/3">项目简介</th>
-                <th className="px-6 py-5 text-center font-bold text-slate-700 uppercase text-xs tracking-wider">状态</th>
-                <th className="px-6 py-5 text-center font-bold text-slate-700 uppercase text-xs tracking-wider">截止日期</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {projects.map((project) => (
-                <tr key={project.id} className="hover:bg-slate-50 transition-colors">
-                  <td className="px-6 py-6 font-bold text-slate-800 text-center text-base">{project.name}</td>
-                  <td className="px-6 py-6 text-slate-600 text-sm leading-relaxed">{project.description}</td>
-                  <td className="px-6 py-6 text-center">
-                    <span className={`font-bold text-xs px-3 py-1.5 rounded-full uppercase tracking-wide border ${project.status === 'Active' ? 'bg-orange-50 text-orange-600 border-orange-200' :
-                      project.status === 'Archived' ? 'bg-red-50 text-red-600 border-red-200' :
-                        project.status === 'Pending' ? 'bg-blue-50 text-blue-600 border-blue-200' : 'bg-green-50 text-green-600 border-green-200'
-                      }`}>
-                      {project.status === 'Active' ? '进行中' :
-                        project.status === 'Archived' ? '已结束' :
-                          project.status === 'Pending' ? '未开始' : '已完成'}
+                    <span className="text-[10px] font-black bg-blue-100 text-blue-700 px-2 py-1 rounded-lg">
+                      {u.role === 'Admin' ? '管理员' : '成员'}
                     </span>
-                  </td>
-                  <td className="px-6 py-6 text-slate-800 font-bold text-base text-center">{project.deadline}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+                  </div>
+                ))}
+              </div>
+            )}
+            {searchQuery && searchResults.length === 0 && !searching && (
+              <div className="text-center py-8 text-slate-400 font-bold bg-slate-50 rounded-2xl border border-dashed border-slate-200">
+                没有找到匹配的用户
+              </div>
+            )}
+          </div>
+
         </div>
       </div>
+
+      {/* Password Change Modal - Kept same logic, slightly polished */}
+      {isChangingPassword && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md z-[200] flex items-center justify-center p-4">
+          <div className="bg-white rounded-[2.5rem] p-8 w-full max-w-md shadow-2xl relative animate-in zoom-in-95 duration-200">
+            <button
+              onClick={() => setIsChangingPassword(false)}
+              className="absolute top-6 right-6 p-2 text-slate-400 hover:text-slate-600 bg-slate-50 hover:bg-slate-100 rounded-xl transition-all"
+            >
+              <X size={20} />
+            </button>
+
+            <div className="text-center mb-8">
+              <div className="w-16 h-16 bg-blue-50 rounded-[1.5rem] flex items-center justify-center text-blue-600 mx-auto mb-4 border border-blue-100">
+                <Lock size={28} />
+              </div>
+              <h3 className="text-xl font-black text-slate-800">修改登录密码</h3>
+              <p className="text-slate-500 font-medium text-sm mt-1">请妥善保管您的新密码</p>
+            </div>
+
+            <form onSubmit={handleChangePassword} className="space-y-5">
+              <div className="space-y-2">
+                <label className="text-xs font-black text-slate-500 ml-1">当前密码</label>
+                <input
+                  type="password"
+                  required
+                  value={passwordForm.oldPassword}
+                  onChange={(e) => setPasswordForm(prev => ({ ...prev, oldPassword: e.target.value }))}
+                  className="w-full px-5 py-3.5 bg-slate-50 border border-slate-200 rounded-2xl focus:ring-4 focus:ring-blue-100 focus:border-blue-500 outline-none transition-all font-bold text-slate-800"
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="text-xs font-black text-slate-500 ml-1">新密码</label>
+                <input
+                  type="password"
+                  required
+                  value={passwordForm.newPassword}
+                  onChange={(e) => setPasswordForm(prev => ({ ...prev, newPassword: e.target.value }))}
+                  className="w-full px-5 py-3.5 bg-slate-50 border border-slate-200 rounded-2xl focus:ring-4 focus:ring-blue-100 focus:border-blue-500 outline-none transition-all font-bold text-slate-800"
+                />
+              </div>
+              <button
+                type="submit"
+                disabled={loading}
+                className="w-full mt-2 py-4 bg-blue-600 text-white font-bold rounded-2xl shadow-lg shadow-blue-200 hover:bg-blue-700 transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+              >
+                {loading ? <Loader2 size={18} className="animate-spin" /> : <ShieldCheck size={18} />} 确认修改
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
