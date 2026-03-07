@@ -1,8 +1,7 @@
-import React, { useContext, useEffect, useState } from 'react';
-import { ChevronRight, LayoutGrid, Users, Loader2 } from 'lucide-react';
+import React, { useContext } from 'react';
+import { ChevronRight, LayoutGrid, Users } from 'lucide-react';
 import { AppContext } from '../constants';
-import type { Project, Team, Task } from '../types';
-import { TaskAPI, ProjectAPI } from '../services/api';
+import type { Project, Team } from '../types';
 import { useNavigate, useLocation } from 'react-router-dom';
 
 interface LeftPanelProps {
@@ -11,11 +10,9 @@ interface LeftPanelProps {
 
 export const LeftPanel: React.FC<LeftPanelProps> = ({ showStats = false }) => {
   const { state } = useContext(AppContext);
-  const { projects, teams } = state;
+  const { projects, teams, tasks } = state;
   const navigate = useNavigate();
   const location = useLocation();
-  const [tasks, setTasks] = useState<Task[]>([]);
-  const [loading, setLoading] = useState(false);
 
   const handleTeamClick = (team: Team) => {
     const tId = team.teamId || team.id;
@@ -26,42 +23,6 @@ export const LeftPanel: React.FC<LeftPanelProps> = ({ showStats = false }) => {
     const tId = team.teamId || team.id;
     return location.pathname === `/team/${tId}`;
   };
-
-  // 获取所有项目的任务
-  useEffect(() => {
-    const fetchAllTasks = async () => {
-      if (!showStats || projects.length === 0) return;
-      setLoading(true);
-      try {
-        const allTasks: Task[] = [];
-        for (const project of projects) {
-          const projectId = project.projectId || project.id;
-          if (!projectId) continue;
-          try {
-            const res = await TaskAPI.list(projectId, 1, 100);
-            console.log(`Tasks for project ${projectId}:`, res);
-            // res 可能是数组（已解包）或 { data: [] } 对象
-            const taskList = Array.isArray(res) ? res : (res?.data || []);
-            if (taskList.length > 0) {
-              allTasks.push(...taskList);
-            }
-          } catch (e) {
-            console.error(`Failed to fetch tasks for project ${projectId}`, e);
-          }
-        }
-        setTasks(allTasks);
-      } catch (e) {
-        console.error('Failed to fetch tasks', e);
-      } finally {
-        setLoading(false);
-      }
-    };
-    fetchAllTasks();
-  }, [projects, showStats]);
-
-  // 调试：打印任务数据
-  console.log('Tasks:', tasks);
-  console.log('Task statuses:', tasks.map(t => t.status));
 
   // 任务统计
   const now = new Date();
@@ -155,10 +116,7 @@ export const LeftPanel: React.FC<LeftPanelProps> = ({ showStats = false }) => {
       {/* Project Checklist Stats - 任务统计 */}
       {showStats && (
         <div className="bg-white rounded-xl p-6 shadow-sm border border-slate-100">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="font-bold text-slate-800 text-lg">项目清单</h3>
-            {loading && <Loader2 size={16} className="animate-spin text-slate-400" />}
-          </div>
+          <h3 className="font-bold text-slate-800 text-lg mb-4">项目清单</h3>
 
           <div className="pt-4 space-y-3">
             <div className="flex items-center justify-between text-sm">

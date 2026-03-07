@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { X } from 'lucide-react';
+import { X, AlertCircle } from 'lucide-react';
 
 interface CreateProjectModalProps {
     onClose: () => void;
@@ -13,16 +13,20 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({ onClose,
 
     const [teamId, setTeamId] = useState(teams[0]?.id || 0);
     const [loading, setLoading] = useState(false);
+    const [error, setError] = useState<string | null>(null);
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         setLoading(true);
+        setError(null);
         try {
             await onSubmit({ name, description, teamId });
             onClose();
-        } catch (error) {
+        } catch (error: any) {
             console.error(error);
-            alert('创建项目失败');
+            // 提取具体的错误信息
+            const errorMessage = error?.message || error?.response?.data?.message || '创建项目失败，请稍后重试';
+            setError(errorMessage);
         } finally {
             setLoading(false);
         }
@@ -74,6 +78,14 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({ onClose,
                             placeholder="简要描述此项目的目标和规划..."
                         />
                     </div>
+
+                    {/* 错误信息显示 */}
+                    {error && (
+                        <div className="flex items-center gap-2 text-red-500 text-sm bg-red-50 p-3 rounded-xl">
+                            <AlertCircle size={16} />
+                            <span>{error}</span>
+                        </div>
+                    )}
 
                     <div className="pt-4 flex justify-end gap-3">
                         <button
