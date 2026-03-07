@@ -105,15 +105,18 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ task, onClose,
                 const taskDetail = await TaskAPI.info(taskId);
                 if (taskDetail) {
                     // Normalize refetched fields
-                    setLocalTask(prev => ({
-                        ...prev,
-                        ...taskDetail,
-                        id: taskDetail.taskId || taskDetail.id || prev.id,
-                        dueDate: (taskDetail.dueAt || taskDetail.dueDate || prev.dueDate || '').split('T')[0],
-                        dueAt: taskDetail.dueAt || taskDetail.dueDate || prev.dueAt,
-                        assigneeId: taskDetail.assigneeUserId || taskDetail.assigneeId || taskDetail.currentOwnerUserId || prev.assigneeId,
-                        attachments: taskDetail.attachments || prev.attachments || []
-                    }));
+                    setLocalTask(prev => {
+                        const dueDateRaw = taskDetail.dueAt || taskDetail.dueDate || prev.dueDate;
+                        return {
+                            ...prev,
+                            ...taskDetail,
+                            id: taskDetail.taskId || taskDetail.id || prev.id,
+                            dueDate: dueDateRaw ? dueDateRaw.split('T')[0] : undefined,
+                            dueAt: taskDetail.dueAt || taskDetail.dueDate || prev.dueAt,
+                            assigneeId: taskDetail.assigneeUserId || taskDetail.assigneeId || taskDetail.currentOwnerUserId || prev.assigneeId,
+                            attachments: taskDetail.attachments || prev.attachments || []
+                        };
+                    });
                 }
             } catch (e) {
                 console.error('Failed to fetch task detail', e);
@@ -531,7 +534,7 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ task, onClose,
                     <div className="flex justify-between items-start mb-6">
                         <div className="flex gap-2">
                             <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold border ${priorityColors[localTask.priority]}`}>
-                                {localTask.priority}
+                                {localTask.priority === 'LOW' ? '低' : localTask.priority === 'MEDIUM' ? '中' : localTask.priority === 'HIGH' ? '高' : localTask.priority === 'URGENT' ? '紧急' : localTask.priority}
                             </span>
                             <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold border bg-slate-50 text-slate-500 border-slate-200`}>
                                 ID: #{localTask.id || localTask.taskId}
@@ -556,7 +559,13 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ task, onClose,
                             <h4 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-3 flex items-center gap-2">
                                 <Clock size={14} /> 截止日期
                             </h4>
-                            <div className="text-slate-700 font-bold">{localTask.dueDate || '未设定'}</div>
+                            <div className="text-slate-700 font-bold">
+                                {localTask.dueDate ? new Date(localTask.dueDate).toLocaleDateString('zh-CN', {
+                                    year: 'numeric',
+                                    month: '2-digit',
+                                    day: '2-digit'
+                                }) : '未设定'}
+                            </div>
                         </div>
                         <div>
                             <h4 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-3 flex items-center gap-2">
