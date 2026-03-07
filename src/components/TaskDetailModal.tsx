@@ -89,7 +89,7 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ task, onClose,
         message: '',
         confirmText: '确认',
         cancelText: '取消',
-        onConfirm: () => {},
+        onConfirm: () => { },
         type: 'warning'
     });
 
@@ -502,6 +502,48 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ task, onClose,
         }
     };
 
+    // 申领项目 (领取任务)
+    const handleClaimTask = async () => {
+        setLoading(true);
+        try {
+            const taskId = localTask.id || localTask.taskId || 0;
+            await TaskAPI.claim({ taskId });
+
+            // 申领成功后，将状态改为 进行中，并将负责人设为当前用户
+            const updated: Task = {
+                ...localTask,
+                status: TaskStatus.IN_PROGRESS,
+                assigneeId: currentUser?.userId || currentUser?.id || 0
+            };
+
+            setLocalTask(updated);
+            setState(prev => ({
+                ...prev,
+                tasks: prev.tasks.map(t => (t.id === localTask.id || t.taskId === localTask.taskId) ? updated : t)
+            }));
+            onUpdate?.();
+
+            showConfirmDialog(
+                '领取成功',
+                '您已成功领取该任务，任务状态已变更为 "进行中"。',
+                () => closeConfirmDialog(),
+                'success',
+                '知道了'
+            );
+        } catch (e: any) {
+            console.error('Claim Error:', e);
+            showConfirmDialog(
+                '领取失败',
+                e.message || '领取任务失败，请稍后重试。',
+                () => closeConfirmDialog(),
+                'danger',
+                '知道了'
+            );
+        } finally {
+            setLoading(false);
+        }
+    };
+
     const priorityColors = {
         [TaskPriority.LOW]: 'bg-slate-100 text-slate-600 border-slate-200',
         [TaskPriority.MEDIUM]: 'bg-blue-50 text-blue-600 border-blue-200',
@@ -564,7 +606,19 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ task, onClose,
                                         <span className="text-slate-700 font-bold">{assignee.name}</span>
                                     </>
                                 ) : (
-                                    <span className="text-slate-400 italic text-sm">暂无负责人</span>
+                                    <div className="flex items-center gap-3">
+                                        <span className="text-slate-400 italic text-sm">暂无负责人</span>
+                                        {localTask.status === TaskStatus.OPEN_FOR_CLAIM && (
+                                            <button
+                                                onClick={handleClaimTask}
+                                                disabled={loading}
+                                                className="px-3 py-1 bg-blue-500 text-white text-xs font-bold rounded-lg hover:bg-blue-600 transition-all shadow-sm flex items-center gap-1"
+                                            >
+                                                {loading ? <Loader2 size={12} className="animate-spin" /> : null}
+                                                领取任务
+                                            </button>
+                                        )}
+                                    </div>
                                 )}
                             </div>
                         </div>
@@ -603,13 +657,12 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ task, onClose,
                                         onClick={() => handleStatusChange(value)}
                                         disabled={!isValid && !isCurrent}
                                         title={!isValid && !isCurrent ? '当前状态不支持流转至此状态' : ''}
-                                        className={`px-4 py-2 rounded-xl text-sm font-bold border transition-all ${
-                                            isCurrent
+                                        className={`px-4 py-2 rounded-xl text-sm font-bold border transition-all ${isCurrent
                                                 ? 'bg-blue-500 text-white border-blue-500 shadow-md shadow-blue-200'
                                                 : isValid
                                                     ? 'bg-white text-slate-500 border-slate-200 hover:border-blue-300 hover:bg-blue-50/30'
                                                     : 'bg-slate-100 text-slate-300 border-slate-200 cursor-not-allowed'
-                                        }`}
+                                            }`}
                                     >
                                         {statusMap[value]?.label || value}
                                     </button>
@@ -846,14 +899,13 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ task, onClose,
                 <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center z-[200] p-4">
                     <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md p-8 animate-in fade-in zoom-in duration-200">
                         <div className="flex items-center gap-4 mb-6">
-                            <div className={`w-14 h-14 rounded-2xl flex items-center justify-center ${
-                                confirmDialog.type === 'success' ? 'bg-emerald-100 text-emerald-600' :
-                                confirmDialog.type === 'danger' ? 'bg-red-100 text-red-600' :
-                                'bg-amber-100 text-amber-600'
-                            }`}>
+                            <div className={`w-14 h-14 rounded-2xl flex items-center justify-center ${confirmDialog.type === 'success' ? 'bg-emerald-100 text-emerald-600' :
+                                    confirmDialog.type === 'danger' ? 'bg-red-100 text-red-600' :
+                                        'bg-amber-100 text-amber-600'
+                                }`}>
                                 {confirmDialog.type === 'success' ? <CheckCircle2 size={28} /> :
-                                 confirmDialog.type === 'danger' ? <AlertCircle size={28} /> :
-                                 <AlertCircle size={28} />}
+                                    confirmDialog.type === 'danger' ? <AlertCircle size={28} /> :
+                                        <AlertCircle size={28} />}
                             </div>
                             <h3 className="text-xl font-black text-slate-800">{confirmDialog.title}</h3>
                         </div>
@@ -871,11 +923,10 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ task, onClose,
                             )}
                             <button
                                 onClick={confirmDialog.onConfirm}
-                                className={`flex-1 px-6 py-3 rounded-xl font-bold text-white transition-all ${
-                                    confirmDialog.type === 'success' ? 'bg-emerald-500 hover:bg-emerald-600 shadow-lg shadow-emerald-200' :
-                                    confirmDialog.type === 'danger' ? 'bg-red-500 hover:bg-red-600 shadow-lg shadow-red-200' :
-                                    'bg-amber-500 hover:bg-amber-600 shadow-lg shadow-amber-200'
-                                }`}
+                                className={`flex-1 px-6 py-3 rounded-xl font-bold text-white transition-all ${confirmDialog.type === 'success' ? 'bg-emerald-500 hover:bg-emerald-600 shadow-lg shadow-emerald-200' :
+                                        confirmDialog.type === 'danger' ? 'bg-red-500 hover:bg-red-600 shadow-lg shadow-red-200' :
+                                            'bg-amber-500 hover:bg-amber-600 shadow-lg shadow-amber-200'
+                                    }`}
                             >
                                 {confirmDialog.confirmText}
                             </button>
