@@ -305,6 +305,14 @@ export const TasksPage: React.FC = () => {
                 <TaskDetailModal
                     task={selectedTask}
                     onClose={() => setSelectedTask(null)}
+                    onUpdate={() => {
+                        // 刷新 selectedTask 以获取最新的附件数据
+                        const taskId = selectedTask.id || selectedTask.taskId;
+                        const updatedTask = tasks.find(t => (t.id === taskId || t.taskId === taskId));
+                        if (updatedTask) {
+                            setSelectedTask(updatedTask);
+                        }
+                    }}
                 />
             )}
         </div>
