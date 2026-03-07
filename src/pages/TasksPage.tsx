@@ -9,6 +9,7 @@ import { AssignTaskModal } from '../components/AssignTaskModal';
 import { TaskDetailModal } from '../components/TaskDetailModal';
 import { TaskAPI } from '../services/api';
 import { TaskStatus, TaskPriority } from '../types';
+import { showError, showSuccess } from '../components/Dialog';
 
 type TaskFilter = 'all' | 'done' | 'in_progress' | 'pending' | 'cancelled';
 
@@ -324,8 +325,9 @@ export const TasksPage: React.FC = () => {
                                 comments: []
                             };
                             setState(prev => ({ ...prev, tasks: [...prev.tasks, newTask] }));
-                        } catch (e) {
-                            alert('创建任务失败');
+                            await showSuccess('任务创建成功');
+                        } catch (e: any) {
+                            await showError(e?.message || '创建任务失败');
                         }
                     }}
                 />
@@ -375,8 +377,9 @@ export const TasksPage: React.FC = () => {
                                 ...prev,
                                 tasks: prev.tasks.map(t => (t.id === taskId || t.taskId === taskId) ? updated : t)
                             }));
-                        } catch (e) {
-                            alert('更新任务失败');
+                            await showSuccess('任务更新成功');
+                        } catch (e: any) {
+                            await showError(e?.message || '更新任务失败');
                         }
                     }}
                 />
@@ -387,26 +390,17 @@ export const TasksPage: React.FC = () => {
                     task={assigningTask}
                     users={users}
                     onClose={() => setAssigningTask(null)}
-                    onSubmit={async (data) => {
+                    onSubmit={async (data: { taskId: number; projectId: number; userId: number }) => {
                         try {
-                            const taskId = assigningTask.id || assigningTask.taskId || 0;
-                            await TaskAPI.assign({
-                                taskId: data.taskId,
-                                projectId: data.projectId,
-                                userId: data.userId
-                            });
-
-                            const updated: Task = {
-                                ...assigningTask,
-                                assigneeId: data.userId
-                            };
-
+                            await TaskAPI.assign(data);
+                            const updated = { ...assigningTask, assigneeId: data.userId };
                             setState(prev => ({
                                 ...prev,
-                                tasks: prev.tasks.map(t => (t.id === taskId || t.taskId === taskId) ? updated : t)
+                                tasks: prev.tasks.map(t => (t.id === data.taskId || t.taskId === data.taskId) ? updated : t)
                             }));
-                        } catch (e) {
-                            alert('分配任务失败');
+                            await showSuccess('任务分配成功');
+                        } catch (e: any) {
+                            await showError(e?.message || '分配任务失败');
                         }
                     }}
                 />

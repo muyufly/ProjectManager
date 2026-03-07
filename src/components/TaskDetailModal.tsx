@@ -3,6 +3,7 @@ import { X, MessageSquare, Paperclip, Send, Clock, User as UserIcon, CheckCircle
 import { Task, TaskStatus, TaskPriority, Comment, Attachment } from '../types';
 import { AppContext } from '../constants';
 import { TaskAPI, CommentAPI, UploadAPI } from '../services/api';
+import { showError, showSuccess } from './Dialog';
 
 // 文件大小限制 (50MB)
 const MAX_FILE_SIZE = 50 * 1024 * 1024;
@@ -388,8 +389,8 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ task, onClose,
             const commentsData = await CommentAPI.list(taskId);
             setComments(commentsData);
             setNewComment('');
-        } catch (e) {
-            alert('评论失败');
+        } catch (e: any) {
+            await showError(e?.message || '评论失败');
         } finally {
             setLoading(false);
         }

@@ -3,7 +3,8 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { AppContext } from '../constants';
 import { LeftPanel } from '../components/LeftPanel';
 import { ProjectAPI, UserAPI } from '../services/api';
-import { UserPlus, Settings, Users, FolderOpen, MoreVertical, Shield, Trash2, Edit3, Plus } from 'lucide-react';
+import { UserPlus, Settings, Users, FolderOpen, MoreVertical, Shield, Trash2, Edit3, Plus, X, Check } from 'lucide-react';
+import { showAlert, showPrompt, showError } from '../components/Dialog';
 import type { Project, User } from '../types';
 
 export const ProjectDetailPage: React.FC = () => {
@@ -19,10 +20,24 @@ export const ProjectDetailPage: React.FC = () => {
     const [activeTab, setActiveTab] = useState<'members' | 'groups'>('members');
     const [loading, setLoading] = useState(false);
 
+    // 编辑状态
+    const [isEditing, setIsEditing] = useState(false);
+    const [editName, setEditName] = useState('');
+    const [editDescription, setEditDescription] = useState('');
+    const [editError, setEditError] = useState<string | null>(null);
+
+    // 项目成员列表
+    const [projectMembers, setProjectMembers] = useState<any[]>([]);
+
     useEffect(() => {
         const fetchData = async () => {
             if (!project) return;
             try {
+                // 获取项目成员列表（用于判断权限）
+                const membersRes = await ProjectAPI.listMember(project.projectId || project.id);
+                const members = membersRes.data?.items || membersRes.items || [];
+                setProjectMembers(members);
+
                 const groupsRes = await ProjectAPI.listGroup(project.projectId || project.id);
                 setGroups(groupsRes.items || []);
             } catch (e) {
@@ -39,10 +54,21 @@ export const ProjectDetailPage: React.FC = () => {
         </div>
     );
 
-    const isManager = currentUser?.userId === project.managerId || project.memberIds.includes(currentUser?.userId || 0);
+    // 判断当前用户是否是项目创建者/管理员
+    const currentUserId = currentUser?.userId || currentUser?.id;
+    
+    // 从项目成员列表中查找当前用户的角色
+    const currentUserMember = projectMembers.find(m => m.userId === currentUserId);
+    const isProjectManager = currentUserMember?.role === 'MANAGER' || currentUserMember?.role === '管理员';
+    
+    const isManager = project ? (
+        isProjectManager ||
+        currentUser?.role === '管理员' || 
+        currentUser?.role === 'MANAGER'
+    ) : false;
 
     const handleCreateGroup = async () => {
-        const name = prompt('输入新角色组名称:');
+        const name = await showPrompt('新建角色组', '请输入新角色组名称:', '角色组名称');
         if (!name) return;
         try {
             const groupId = await ProjectAPI.createGroup({
@@ -50,8 +76,55 @@ export const ProjectDetailPage: React.FC = () => {
                 name
             });
             setGroups(prev => [...prev, { roleGroupId: groupId, name, projectId: project.projectId || project.id }]);
-        } catch (e) {
-            alert('创建失败');
+            await showAlert('创建成功', `角色组 "${name}" 创建成功`, 'success');
+        } catch (e: any) {
+            await showError(e?.message || '创建角色组失败');
+        }
+    };
+
+    // 开始编辑
+    const handleStartEdit = () => {
+        setEditName(project.name);
+        setEditDescription(project.description || '');
+        setEditError(null);
+        setIsEditing(true);
+    };
+
+    // 取消编辑
+    const handleCancelEdit = () => {
+        setIsEditing(false);
+        setEditError(null);
+    };
+
+    // 保存编辑
+    const handleSaveEdit = async () => {
+        if (!editName.trim()) {
+            setEditError('项目名称不能为空');
+            return;
+        }
+        setLoading(true);
+        setEditError(null);
+        try {
+            await ProjectAPI.edit({
+                projectId: project.projectId || project.id,
+                name: editName.trim(),
+                description: editDescription.trim()
+            });
+            // 更新本地状态
+            setState(prev => ({
+                ...prev,
+                projects: prev.projects.map(p =>
+                    (p.id === pId || p.projectId === pId)
+                        ? { ...p, name: editName.trim(), description: editDescription.trim() }
+                        : p
+                )
+            }));
+            setIsEditing(false);
+        } catch (error: any) {
+            const errorMessage = error?.message || error?.response?.data?.message || '编辑项目失败，请稍后重试';
+            setEditError(errorMessage);
+        } finally {
+            setLoading(false);
         }
     };
 
@@ -79,16 +152,91 @@ export const ProjectDetailPage: React.FC = () => {
 
                     <div className="bg-white p-8 rounded-3xl shadow-sm border border-slate-200 relative overflow-hidden group">
                         <div className="absolute top-0 right-0 w-32 h-32 bg-indigo-50 rounded-full -mr-16 -mt-16 group-hover:scale-110 transition-transform duration-500"></div>
+                        
+                        {/* 编辑按钮 */}
+                        {!isEditing && isManager && (
+                            <button
+                                onClick={handleStartEdit}
+                                className="absolute top-6 right-6 px-4 py-2 bg-white text-slate-700 hover:bg-slate-50 rounded-xl transition-all z-20 flex items-center gap-2 shadow-sm border border-slate-200 font-bold"
+                                title="编辑项目"
+                            >
+                                <Edit3 size={18} /> 编辑项目
+                            </button>
+                        )}
+                        
                         <div className="relative z-10">
-                            <h1 className="text-3xl font-black text-slate-800 mb-2">{project.name}</h1>
-                            <p className="text-slate-500 max-w-2xl">{project.description}</p>
-                            <div className="flex gap-6 mt-6">
-                                <div className="flex flex-col">
-                                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">状态</span>
-                                    <span className="text-sm font-bold text-emerald-500">{project.status}</span>
+                            {isEditing ? (
+                                // 编辑表单
+                                <div className="space-y-4">
+                                    <div>
+                                        <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">项目名称</label>
+                                        <input
+                                            type="text"
+                                            value={editName}
+                                            onChange={(e) => setEditName(e.target.value)}
+                                            className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 outline-none text-lg font-bold text-slate-800"
+                                            placeholder="输入项目名称"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">项目描述</label>
+                                        <textarea
+                                            value={editDescription}
+                                            onChange={(e) => setEditDescription(e.target.value)}
+                                            className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 outline-none text-sm text-slate-600 resize-none"
+                                            rows={3}
+                                            placeholder="输入项目描述"
+                                        />
+                                    </div>
+                                    
+                                    {/* 错误信息 */}
+                                    {editError && (
+                                        <div className="flex items-center gap-2 text-red-500 text-sm bg-red-50 p-3 rounded-xl">
+                                            <X size={16} />
+                                            <span>{editError}</span>
+                                        </div>
+                                    )}
+                                    
+                                    {/* 操作按钮 */}
+                                    <div className="flex gap-3 pt-2">
+                                        <button
+                                            onClick={handleCancelEdit}
+                                            className="px-5 py-2.5 rounded-xl font-bold text-slate-500 hover:bg-slate-100 transition-all flex items-center gap-2"
+                                            disabled={loading}
+                                        >
+                                            <X size={18} /> 取消
+                                        </button>
+                                        <button
+                                            onClick={handleSaveEdit}
+                                            className="px-5 py-2.5 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-700 transition-all flex items-center gap-2 shadow-md disabled:opacity-50"
+                                            disabled={loading}
+                                        >
+                                            {loading ? (
+                                                <>
+                                                    <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                                                    保存中...
+                                                </>
+                                            ) : (
+                                                <>
+                                                    <Check size={18} /> 保存
+                                                </>
+                                            )}
+                                        </button>
+                                    </div>
                                 </div>
-
-                            </div>
+                            ) : (
+                                // 展示模式
+                                <>
+                                    <h1 className="text-3xl font-black text-slate-800 mb-2">{project.name}</h1>
+                                    <p className="text-slate-500 max-w-2xl">{project.description}</p>
+                                    <div className="flex gap-6 mt-6">
+                                        <div className="flex flex-col">
+                                            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">状态</span>
+                                            <span className="text-sm font-bold text-emerald-500">{project.status}</span>
+                                        </div>
+                                    </div>
+                                </>
+                            )}
                         </div>
                     </div>
                 </div>
