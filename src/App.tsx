@@ -13,6 +13,7 @@ import { InviteAcceptPage } from './pages/InviteAcceptPage';
 import { LoginPage } from './pages/LoginPage';
 import { RegisterPage } from './pages/RegisterPage';
 import { AuthCallbackPage } from './pages/AuthCallbackPage';
+import { DialogProvider } from './components/Dialog';
 import type { AppState, Project } from './types';
 import { INITIAL_STATE, AppContext } from './constants';
 import { UserAPI, TeamAPI, ProjectAPI, TaskAPI, NotifyAPI } from './services/api';
@@ -250,35 +251,37 @@ const App: React.FC = () => {
 
   return (
     <AppContext.Provider value={{ state, setState, refreshData }}>
-      <HashRouter>
-        <Routes>
-          <Route path="/login" element={<LoginPage />} />
-          <Route path="/register" element={<RegisterPage />} />
-          <Route path="/auth/callback" element={<AuthCallbackPage />} />
-          <Route path="*" element={
-            !state.currentUser ? (
-              <Navigate to="/login" replace />
-            ) : (
-              <Layout>
-                <Routes>
-                  <Route path="/" element={<Dashboard />} />
-                  <Route path="/tasks" element={<TasksPage />} />
-                  <Route path="/tasks/:projectId" element={<TasksPage />} />
-                  <Route path="/profile" element={<ProfilePage />} />
-                  <Route path="/profile/:userId" element={<ProfilePage />} />
-                  <Route path="/team/:teamId" element={<TeamDetailPage />} />
-                  <Route path="/project-team" element={<ProjectTeamPage />} />
-                  <Route path="/project/:projectId" element={<ProjectDetailPage />} />
-                  <Route path="/accept-invite/:token" element={<InviteAcceptPage />} />
-                  <Route path="/announcements" element={<AnnouncementListPage />} />
-                  <Route path="/announcement/:id" element={<AnnouncementDetailPage />} />
-                  <Route path="*" element={<Navigate to="/" replace />} />
-                </Routes>
-              </Layout>
-            )
-          } />
-        </Routes>
-      </HashRouter>
+      <DialogProvider>
+        <HashRouter>
+          <Routes>
+            <Route path="/login" element={<LoginPage />} />
+            <Route path="/register" element={<RegisterPage />} />
+            <Route path="/auth/callback" element={<AuthCallbackPage />} />
+            <Route path="*" element={
+              !state.currentUser ? (
+                <Navigate to="/login" replace />
+              ) : (
+                <Layout>
+                  <Routes>
+                    <Route path="/" element={<Dashboard />} />
+                    <Route path="/tasks" element={<TasksPage />} />
+                    <Route path="/tasks/:projectId" element={<TasksPage />} />
+                    <Route path="/profile" element={<ProfilePage />} />
+                    <Route path="/profile/:userId" element={<ProfilePage />} />
+                    <Route path="/team/:teamId" element={<TeamDetailPage />} />
+                    <Route path="/project-team" element={<ProjectTeamPage />} />
+                    <Route path="/project/:projectId" element={<ProjectDetailPage />} />
+                    <Route path="/accept-invite/:token" element={<InviteAcceptPage />} />
+                    <Route path="/announcements" element={<AnnouncementListPage />} />
+                    <Route path="/announcement/:id" element={<AnnouncementDetailPage />} />
+                    <Route path="*" element={<Navigate to="/" replace />} />
+                  </Routes>
+                </Layout>
+              )
+            } />
+          </Routes>
+        </HashRouter>
+      </DialogProvider>
     </AppContext.Provider>
   );
 };

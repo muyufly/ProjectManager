@@ -3,6 +3,7 @@ import { X, MessageSquare, Paperclip, Send, Clock, User as UserIcon, CheckCircle
 import { Task, TaskStatus, TaskPriority, Comment, Attachment } from '../types';
 import { AppContext } from '../constants';
 import { TaskAPI, CommentAPI, UploadAPI } from '../services/api';
+import { showError, showSuccess } from './Dialog';
 
 // 文件大小限制 (50MB)
 const MAX_FILE_SIZE = 50 * 1024 * 1024;
@@ -393,8 +394,8 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ task, onClose,
             const commentsData = await CommentAPI.list(taskId);
             setComments(commentsData);
             setNewComment('');
-        } catch (e) {
-            alert('评论失败');
+        } catch (e: any) {
+            await showError(e?.message || '评论失败');
         } finally {
             setLoading(false);
         }
@@ -540,16 +541,6 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ task, onClose,
 
     // 申领项目 (领取任务)
     const handleClaimTask = async () => {
-        if (!hasAdminRights) {
-            showConfirmDialog(
-                '权限不足',
-                '只有管理员 (MANAGER) 可以领取任务。',
-                () => closeConfirmDialog(),
-                'warning',
-                '知道了'
-            );
-            return;
-        }
         setLoading(true);
         try {
             const taskId = localTask.id || localTask.taskId || 0;
@@ -598,12 +589,12 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ task, onClose,
     };
 
     const statusMap = {
-        [TaskStatus.NOT_STARTED]: { label: '未开始', color: 'text-slate-500' },
-        [TaskStatus.OPEN_FOR_CLAIM]: { label: '待申领', color: 'text-blue-500' },
-        [TaskStatus.IN_PROGRESS]: { label: '进行中', color: 'text-orange-500' },
-        [TaskStatus.IN_REVIEW]: { label: '审核中', color: 'text-purple-500' },
-        [TaskStatus.DONE]: { label: '已完成', color: 'text-green-500' },
-        [TaskStatus.CANCELLED]: { label: '已取消', color: 'text-slate-400' },
+        [TaskStatus.NOT_STARTED]: { label: '未开始', color: 'text-slate-500', bgColor: 'bg-slate-50', borderColor: 'border-slate-200' },
+        [TaskStatus.OPEN_FOR_CLAIM]: { label: '待申领', color: 'text-blue-500', bgColor: 'bg-blue-50', borderColor: 'border-blue-200' },
+        [TaskStatus.IN_PROGRESS]: { label: '进行中', color: 'text-orange-500', bgColor: 'bg-orange-50', borderColor: 'border-orange-200' },
+        [TaskStatus.IN_REVIEW]: { label: '审核中', color: 'text-purple-500', bgColor: 'bg-purple-50', borderColor: 'border-purple-200' },
+        [TaskStatus.DONE]: { label: '已完成', color: 'text-green-500', bgColor: 'bg-green-50', borderColor: 'border-green-200' },
+        [TaskStatus.CANCELLED]: { label: '已取消', color: 'text-gray-500', bgColor: 'bg-gray-100', borderColor: 'border-gray-300' },
     };
 
     return (
@@ -652,19 +643,7 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ task, onClose,
                                         <span className="text-slate-700 font-bold">{assignee.name}</span>
                                     </>
                                 ) : (
-                                    <div className="flex items-center gap-3">
-                                        <span className="text-slate-400 italic text-sm">暂无负责人</span>
-                                        {localTask.status === TaskStatus.OPEN_FOR_CLAIM && (
-                                            <button
-                                                onClick={handleClaimTask}
-                                                disabled={loading}
-                                                className="px-3 py-1 bg-blue-500 text-white text-xs font-bold rounded-lg hover:bg-blue-600 transition-all shadow-sm flex items-center gap-1"
-                                            >
-                                                {loading ? <Loader2 size={12} className="animate-spin" /> : null}
-                                                领取任务
-                                            </button>
-                                        )}
-                                    </div>
+                                    <span className="text-slate-400 italic text-sm">暂无负责人</span>
                                 )}
                             </div>
                         </div>
@@ -697,6 +676,7 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ task, onClose,
                             {Object.entries(TaskStatus).map(([key, value]) => {
                                 const isCurrent = localTask.status === value;
                                 const isValid = isValidTransition(localTask.status, value);
+                                const statusStyle = statusMap[value];
                                 return (
                                     <button
                                         key={value}
@@ -710,7 +690,7 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ task, onClose,
                                                 : 'bg-slate-100 text-slate-300 border-slate-200 cursor-not-allowed'
                                             }`}
                                     >
-                                        {statusMap[value]?.label || value}
+                                        {statusStyle?.label || value}
                                     </button>
                                 );
                             })}

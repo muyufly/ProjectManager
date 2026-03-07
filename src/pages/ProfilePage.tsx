@@ -26,6 +26,7 @@ import {
 } from 'lucide-react';
 import { UserAPI, UploadAPI, AuthAPI, TeamAPI } from '../services/api';
 import type { User } from '../types';
+import { showSuccess, showError } from '../components/Dialog';
 
 export const ProfilePage: React.FC = () => {
   const { state, setState, refreshData } = useContext(AppContext);
@@ -36,6 +37,7 @@ export const ProfilePage: React.FC = () => {
   const [isEditing, setIsEditing] = useState(false);
   const [isChangingPassword, setIsChangingPassword] = useState(false);
   const [passwordForm, setPasswordForm] = useState({ oldPassword: '', newPassword: '' });
+  const [passwordMessage, setPasswordMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [searching, setSearching] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<User[]>([]);
@@ -122,10 +124,10 @@ export const ProfilePage: React.FC = () => {
       const updatedUser = await UserAPI.getInfo();
       setState(prev => ({ ...prev, currentUser: updatedUser }));
       setIsEditing(false);
-      alert('所有资料已成功同步到云端');
+      await showSuccess('同步成功', '所有资料已成功同步到云端');
     } catch (err) {
       console.error('Failed to update profile:', err);
-      setEditError('保存失败，请重试');
+      await showError('保存失败', '保存失败，请重试');
     } finally {
       setLoading(false);
     }
@@ -218,13 +220,17 @@ export const ProfilePage: React.FC = () => {
   const handleChangePassword = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
+    setPasswordMessage(null);
     try {
       await AuthAPI.changePassword(passwordForm);
-      alert('密码修改成功');
-      setIsChangingPassword(false);
-      setPasswordForm({ oldPassword: '', newPassword: '' });
-    } catch (e) {
-      alert('修改失败: ' + (e as Error).message);
+      setPasswordMessage({ type: 'success', text: '密码修改成功，请使用新密码登录' });
+      setTimeout(() => {
+        setIsChangingPassword(false);
+        setPasswordForm({ oldPassword: '', newPassword: '' });
+        setPasswordMessage(null);
+      }, 2000);
+    } catch (e: any) {
+      setPasswordMessage({ type: 'error', text: e?.message || '密码修改失败，请重试' });
     } finally {
       setLoading(false);
     }
@@ -627,6 +633,17 @@ export const ProfilePage: React.FC = () => {
               >
                 {loading ? <Loader2 size={18} className="animate-spin" /> : <ShieldCheck size={18} />} 确认修改
               </button>
+
+              {/* 消息提示 */}
+              {passwordMessage && (
+                <div className={`mt-4 p-3 rounded-xl text-sm font-bold text-center ${
+                  passwordMessage.type === 'success' 
+                    ? 'bg-emerald-50 text-emerald-600 border border-emerald-200' 
+                    : 'bg-red-50 text-red-600 border border-red-200'
+                }`}>
+                  {passwordMessage.text}
+                </div>
+              )}
             </form>
           </div>
         </div>

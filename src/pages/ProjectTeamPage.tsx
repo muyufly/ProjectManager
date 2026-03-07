@@ -13,6 +13,7 @@ import { TaskAPI, ProjectAPI, TeamAPI } from '../services/api';
 import { TaskDetailModal } from '../components/TaskDetailModal';
 import { InviteMemberModal } from '../components/InviteMemberModal';
 import { InviteProjectMemberModal } from '../components/InviteProjectMemberModal';
+import { showAlert, showConfirm, showPrompt, showError, showSuccess } from '../components/Dialog';
 
 // Role Groups (Real backend data)
 interface RoleGroup {
@@ -95,18 +96,19 @@ export const ProjectTeamPage: React.FC = () => {
         const isCreatorOfTeam = myId > 0 && myId === ownerId;
 
         if (!isCreatorOfTeam) {
-            alert('只有项目团队创建者才有权更改管理员身份');
+            await showAlert('权限不足', '只有项目团队创建者才有权更改管理员身份', 'warning');
             return;
         }
 
         // Skip if target is the creator/owner (they can't be modified)
         if (targetUserId === ownerId) {
-            alert('无法更改创建者的自身权限');
+            await showAlert('无法操作', '无法更改创建者的自身权限', 'warning');
             return;
         }
 
         const action = currentIsAdmin ? '移除管理员权限' : '设为管理员';
-        if (!window.confirm(`确认将该成员${action}吗？`)) return;
+        const confirmed = await showConfirm('确认操作', `确认将该成员${action}吗？`, 'warning');
+        if (!confirmed) return;
 
         try {
             const tId = Number(team.teamId || team.id);
@@ -115,30 +117,35 @@ export const ProjectTeamPage: React.FC = () => {
             } else {
                 await TeamAPI.addAdmin({ teamId: tId, memberId: requestMemberId });
             }
+            await showSuccess('操作成功', `已成功${action}`);
             if (refreshData) await refreshData();
         } catch (e: any) {
             console.error('ManageAdmin failed:', e);
-            alert(`操作失败: ${e.message}`);
+            await showError(e?.message || '操作失败');
         }
     };
 
     const handleRemoveMember = async (team: Team, memberId: number) => {
-        if (!window.confirm('确认将该成员移出团队吗？')) return;
+        const confirmed = await showConfirm('确认移除', '确认将该成员移出团队吗？', 'danger');
+        if (!confirmed) return;
         try {
             await TeamAPI.removeMember({ teamId: Number(team.id || team.teamId), memberId });
+            await showSuccess('移除成功', '成员已移出团队');
             if (refreshData) await refreshData();
         } catch (e: any) {
-            alert(`移除失败: ${e.message}`);
+            await showError(e?.message || '移除失败');
         }
     };
 
     const handleQuitTeam = async (teamId: number) => {
-        if (!window.confirm('确认退出该团队吗？退出后将无法查看内部项目。')) return;
+        const confirmed = await showConfirm('确认退出', '确认退出该团队吗？退出后将无法查看内部项目。', 'warning');
+        if (!confirmed) return;
         try {
             await TeamAPI.quit({ teamId });
+            await showSuccess('退出成功', '您已成功退出团队');
             if (refreshData) await refreshData();
         } catch (e: any) {
-            alert(`退出失败: ${e.message}`);
+            await showError(e?.message || '退出失败');
         }
     };
 
