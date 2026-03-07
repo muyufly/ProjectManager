@@ -486,10 +486,10 @@ export const ProjectTeamPage: React.FC = () => {
                                                                     const formattedDate = `${dateObj.getMonth() + 1}月${dateObj.getDate()}日`;
 
                                                                     return (
-                                                                        <div key={task.id} className="relative group cursor-pointer" onClick={() => setSelectedTask(task)}>
+                                                                        <div key={task.id} className="relative group">
                                                                             <div className="absolute -left-[41px] top-3 w-4 h-4 rounded-full border-2 border-white bg-slate-200 group-hover:bg-blue-500 transition-colors shadow-sm"></div>
 
-                                                                            <div className="bg-white p-4 rounded-2xl border border-slate-100 hover:border-blue-200 hover:shadow-md transition-all flex items-center justify-between gap-4">
+                                                                            <div className="bg-white p-4 rounded-2xl border border-slate-100 flex items-center justify-between gap-4">
                                                                                 <div className="flex items-center gap-4">
                                                                                     <div className="w-10 h-10 rounded-xl bg-slate-50 overflow-hidden border border-white shadow-sm">
                                                                                         <img src={assignee?.avatar || 'https://api.dicebear.com/7.x/avataaars/svg?seed=fallback'} alt="" className="w-full h-full object-cover" />

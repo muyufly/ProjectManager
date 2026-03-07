@@ -2,19 +2,13 @@ import React, { useContext, useState, useMemo } from 'react';
 import { AppContext } from '../constants';
 import type { Project, Task } from '../types';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Calendar, FileText, Send, MessageSquare, ListTodo, Plus, ChevronRight, LayoutGrid, Clock, Users as UsersIcon } from 'lucide-react';
+import { Calendar, FileText, Send, MessageSquare, ListTodo, Plus, ChevronRight, LayoutGrid, Clock, Users as UsersIcon, Filter, CheckCircle2, Circle, RotateCcw, XCircle, Search } from 'lucide-react';
 import { CreateTaskModal } from '../components/CreateTaskModal';
 import { TaskDetailModal } from '../components/TaskDetailModal';
 import { TaskAPI } from '../services/api';
 import { TaskStatus } from '../types';
 
-interface RoleGroup {
-    id: string;
-    name: string;
-    members: { name: string; avatar: string; role: string }[];
-}
-
-const MOCK_GROUPS: RoleGroup[] = [];
+type TaskFilter = 'all' | 'done' | 'in_progress' | 'pending' | 'cancelled';
 
 export const TasksPage: React.FC = () => {
     const { state, setState } = useContext(AppContext);
@@ -24,11 +18,46 @@ export const TasksPage: React.FC = () => {
     const [isTaskModalOpen, setIsTaskModalOpen] = useState(false);
     const [selectedTask, setSelectedTask] = useState<Task | null>(null);
     const [activeProjectId, setActiveProjectId] = useState<number | null>(null);
-    const [showDivision, setShowDivision] = useState<Record<string, boolean>>({});
+    const [taskFilter, setTaskFilter] = useState<TaskFilter>('all');
+    const [searchQuery, setSearchQuery] = useState('');
+    const [showCelebration, setShowCelebration] = useState<number | null>(null);
 
-    const toggleDivision = (pId: string | number) => {
-        const key = String(pId);
-        setShowDivision(prev => ({ ...prev, [key]: !prev[key] }));
+    // 筛选任务 - 使用当前状态值
+    const filterTasks = (projectTasks: Task[], filter: TaskFilter, query: string): Task[] => {
+        let filtered = [...projectTasks];
+
+        // 按状态筛选
+        switch (filter) {
+            case 'done':
+                filtered = filtered.filter(t => t.status === TaskStatus.DONE);
+                break;
+            case 'in_progress':
+                filtered = filtered.filter(t => t.status === TaskStatus.IN_PROGRESS || t.status === TaskStatus.IN_REVIEW);
+                break;
+            case 'pending':
+                filtered = filtered.filter(t => t.status === TaskStatus.NOT_STARTED || t.status === TaskStatus.OPEN_FOR_CLAIM);
+                break;
+            case 'cancelled':
+                filtered = filtered.filter(t => t.status === TaskStatus.CANCELLED);
+                break;
+        }
+
+        // 按搜索词筛选
+        if (query.trim()) {
+            const lowerQuery = query.toLowerCase();
+            filtered = filtered.filter(t =>
+                t.title.toLowerCase().includes(lowerQuery) ||
+                t.description?.toLowerCase().includes(lowerQuery)
+            );
+        }
+
+        return filtered;
+    };
+
+    // 触发完成庆祝动画
+    const triggerCelebration = (taskId: number) => {
+        setShowCelebration(taskId);
+        setTimeout(() => setShowCelebration(null), 2000);
     };
 
     const visibleProjects = useMemo(() => {
@@ -38,15 +67,20 @@ export const TasksPage: React.FC = () => {
     }, [projects, projectId]);
 
     const renderProjectCard = (project: Project) => {
-        const projectTasks = tasks.filter(t => t.projectId === (project.projectId || project.id));
-        const sortedTasks = [...projectTasks].sort((a, b) => {
+        const projectId = project.projectId || project.id;
+        const projectTasks = tasks.filter(t => t.projectId === projectId);
+        // 使用当前状态值进行筛选
+        const filteredTasks = filterTasks(projectTasks, taskFilter, searchQuery);
+        const sortedTasks = [...filteredTasks].sort((a, b) => {
             const dateA = a.completedAt || a.dueDate;
             const dateB = b.completedAt || b.dueDate;
             return new Date(dateB).getTime() - new Date(dateA).getTime();
         });
 
-        const currentProjectId = project.projectId || project.id;
-        const isDivisionVisible = showDivision[String(project.id)];
+        // 计算进度
+        const totalTasks = projectTasks.length;
+        const doneTasks = projectTasks.filter(t => t.status === TaskStatus.DONE).length;
+        const progressPercentage = totalTasks > 0 ? Math.round((doneTasks / totalTasks) * 100) : 0;
 
         return (
             <div key={project.id} className="bg-white rounded-[2.5rem] shadow-xl shadow-slate-200/50 border border-slate-100 overflow-hidden mb-12">
@@ -62,73 +96,74 @@ export const TasksPage: React.FC = () => {
                                 <span className="text-[10px] font-black bg-blue-50 text-blue-600 px-3 py-1 rounded-full border border-blue-100 uppercase tracking-widest">{project.status}</span>
                             </div>
                             <p className="text-slate-400 text-sm font-medium">{project.description || '暂无项目描述'}</p>
+                            {/* 进度条 */}
+                            <div className="mt-3 flex items-center gap-3">
+                                <div className="flex-1 h-2 bg-slate-100 rounded-full overflow-hidden w-48">
+                                    <div
+                                        className="h-full bg-gradient-to-r from-blue-500 to-emerald-500 rounded-full transition-all duration-500"
+                                        style={{ width: `${progressPercentage}%` }}
+                                    />
+                                </div>
+                                <span className="text-xs font-bold text-slate-500">{progressPercentage}%</span>
+                                <span className="text-[10px] text-slate-400">({doneTasks}/{totalTasks})</span>
+                            </div>
                         </div>
-                    </div>
-                    <div className="flex flex-wrap gap-3 w-full lg:w-auto">
-                        <button
-                            onClick={() => toggleDivision(project.id)}
-                            className={`px-6 py-2.5 rounded-2xl border border-blue-400 text-sm font-bold transition-all ${isDivisionVisible
-                                    ? 'bg-blue-50 text-blue-600 ring-2 ring-blue-200'
-                                    : 'text-blue-500 hover:bg-blue-50'
-                                }`}
-                        >
-                            {isDivisionVisible ? '隐藏分工' : '查看分工'}
-                        </button>
                     </div>
                 </div>
 
                 {/* Card Body */}
                 <div className="p-8">
-                    {/* Role Groups Section */}
-                    {isDivisionVisible && (
-                        <div className="bg-slate-50 rounded-[2rem] p-8 mb-8 border border-slate-100 shadow-inner animate-in fade-in slide-in-from-top-4 duration-300">
-                            <div className="flex items-center justify-between mb-8">
-                                <div className="flex items-center gap-3">
-                                    <div className="w-10 h-10 bg-blue-100 rounded-2xl flex items-center justify-center text-blue-600">
-                                        <UsersIcon size={20} />
-                                    </div>
-                                    <h4 className="text-xl font-black text-slate-800">项目分工</h4>
-                                </div>
-                            </div>
-
-                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-                                {MOCK_GROUPS.map(group => (
-                                    <div key={group.id} className="bg-white p-6 rounded-[1.5rem] shadow-sm border border-slate-100 hover:shadow-md transition-shadow">
-                                        <div className="flex justify-between items-center mb-6 pb-4 border-b border-slate-50">
-                                            <h5 className="font-bold text-slate-700">{group.name}</h5>
-                                            <span className="bg-slate-50 text-slate-400 text-[10px] px-2 py-0.5 rounded-full font-black uppercase tracking-tighter">
-                                                {group.members.length} Members
-                                            </span>
-                                        </div>
-                                        <div className="space-y-4">
-                                            {group.members.map((member, idx) => (
-                                                <div key={idx} className="flex items-center gap-3 group/member p-2 rounded-xl hover:bg-slate-50 transition-colors">
-                                                    <div className="w-10 h-10 rounded-2xl bg-slate-100 overflow-hidden border border-white shadow-sm ring-2 ring-transparent group-hover/member:ring-blue-100 transition-all">
-                                                        <img src={member.avatar} alt={member.name} className="w-full h-full object-cover" />
-                                                    </div>
-                                                    <div className="flex flex-col">
-                                                        <span className="text-sm font-bold text-slate-700">{member.name}</span>
-                                                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{member.role}</span>
-                                                    </div>
-                                                </div>
-                                            ))}
-                                        </div>
-                                    </div>
-                                ))}
-                            </div>
-                        </div>
-                    )}
-
                     {/* Timeline Section */}
                     <div className="bg-slate-50/50 rounded-[2.5rem] p-8 border border-slate-100">
-                        <div className="flex items-center justify-between mb-10">
+                        <div className="flex flex-col md:flex-row md:items-center justify-between mb-10 gap-4">
                             <h4 className="text-xl font-black text-slate-800 flex items-center gap-3">
                                 <Clock className="text-blue-500" size={24} /> 任务详情
                             </h4>
-                            <div className="flex gap-2">
-                                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">已完成 {projectTasks.filter(t => t.status === TaskStatus.DONE).length}</span>
-                                <span className="text-[10px] font-bold text-slate-300">/</span>
-                                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">总量 {projectTasks.length}</span>
+
+                            {/* 筛选器 */}
+                            <div className="flex flex-wrap items-center gap-3">
+                                {/* 搜索框 */}
+                                <div className="relative">
+                                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+                                    <input
+                                        type="text"
+                                        placeholder="搜索任务..."
+                                        value={searchQuery}
+                                        onChange={(e) => setSearchQuery(e.target.value)}
+                                        className="pl-9 pr-4 py-2 rounded-xl border border-slate-200 text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-100 outline-none w-40"
+                                    />
+                                </div>
+
+                                {/* 状态筛选 */}
+                                <div className="flex bg-slate-100 rounded-xl p-1 gap-1">
+                                    {[
+                                        { key: 'all', label: '全部', icon: Filter },
+                                        { key: 'done', label: '已完成', icon: CheckCircle2 },
+                                        { key: 'in_progress', label: '进行中', icon: RotateCcw },
+                                        { key: 'pending', label: '待处理', icon: Circle },
+                                        { key: 'cancelled', label: '已取消', icon: XCircle },
+                                    ].map(({ key, label, icon: Icon }) => (
+                                        <button
+                                            key={key}
+                                            onClick={() => setTaskFilter(key as TaskFilter)}
+                                            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                                                taskFilter === key
+                                                    ? 'bg-white text-blue-600 shadow-sm'
+                                                    : 'text-slate-500 hover:text-slate-700'
+                                            }`}
+                                            title={label}
+                                        >
+                                            <Icon size={14} />
+                                            <span className="hidden sm:inline">{label}</span>
+                                        </button>
+                                    ))}
+                                </div>
+
+                                <div className="flex gap-2 text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+                                    <span>显示 {filteredTasks.length}</span>
+                                    <span className="text-slate-300">/</span>
+                                    <span>总量 {projectTasks.length}</span>
+                                </div>
                             </div>
                         </div>
 
@@ -142,28 +177,41 @@ export const TasksPage: React.FC = () => {
                                     const dateObj = new Date(date);
                                     const formattedDate = `${dateObj.getMonth() + 1}月${dateObj.getDate()}日`;
                                     const isLatest = index === 0;
+                                    const isDone = task.status === TaskStatus.DONE;
+
+                                    const taskId = task.id || task.taskId;
 
                                     return (
                                         <div
-                                            key={task.id}
+                                            key={taskId}
                                             className="relative group cursor-pointer"
                                             onClick={() => setSelectedTask(task)}
                                         >
-                                            <div className={`absolute -left-[54px] top-4 w-6 h-6 rounded-full border-4 border-white shadow-md z-10 transition-all duration-500 ${isLatest ? 'bg-blue-600 scale-125 ring-4 ring-blue-100' : 'bg-slate-200 group-hover:bg-blue-400'}`}></div>
+                                            {/* 庆祝动画 */}
+                                            {showCelebration === taskId && (
+                                                <div className="absolute inset-0 pointer-events-none z-50 flex items-center justify-center">
+                                                    <div className="absolute inset-0 bg-emerald-500/10 rounded-[2rem] animate-ping" />
+                                                    <div className="text-4xl animate-bounce">🎉</div>
+                                                </div>
+                                            )}
 
-                                            <div className="bg-white p-6 rounded-[2rem] shadow-sm border border-slate-50 group-hover:shadow-xl group-hover:border-blue-100 transition-all flex flex-col md:flex-row md:items-center gap-6">
+                                            <div className={`absolute -left-[54px] top-4 w-6 h-6 rounded-full border-4 border-white shadow-md z-10 transition-all duration-500 ${isDone ? 'bg-emerald-500 scale-110 ring-4 ring-emerald-100' : isLatest ? 'bg-blue-600 scale-125 ring-4 ring-blue-100' : 'bg-slate-200 group-hover:bg-blue-400'}`}></div>
+
+                                            <div className={`bg-white p-6 rounded-[2rem] shadow-sm border group-hover:shadow-xl transition-all flex flex-col md:flex-row md:items-center gap-6 ${isDone ? 'border-emerald-100 group-hover:border-emerald-200' : 'border-slate-50 group-hover:border-blue-100'}`}>
                                                 <div className="flex items-center gap-4 min-w-[160px]">
                                                     <div className="w-12 h-12 rounded-2xl bg-slate-100 overflow-hidden border border-white shadow-sm ring-2 ring-transparent group-hover:ring-blue-100 transition-all">
                                                         <img src={assignee?.avatar || 'https://api.dicebear.com/7.x/avataaars/svg?seed=fallback'} alt="" className="w-full h-full object-cover" />
                                                     </div>
                                                     <div>
                                                         <div className="text-sm font-black text-slate-800">{assignee?.name || '待认领'}</div>
-                                                        <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{formattedDate}</div>
+                                                        <div className={`text-[10px] font-bold uppercase tracking-widest ${isDone ? 'text-emerald-500' : 'text-slate-400'}`}>
+                                                            {isDone ? '✓ 已完成 · ' : ''}{formattedDate}
+                                                        </div>
                                                     </div>
                                                 </div>
 
                                                 <div className="flex-1">
-                                                    <h5 className="font-bold text-slate-800 text-lg group-hover:text-blue-600 transition-colors uppercase tracking-tight">{task.title}</h5>
+                                                    <h5 className={`font-bold text-lg group-hover:text-blue-600 transition-colors uppercase tracking-tight ${isDone ? 'text-slate-600 line-through decoration-slate-300' : 'text-slate-800'}`}>{task.title}</h5>
                                                     <p className="text-slate-400 text-sm mt-1 line-clamp-1 font-medium italic opacity-80">{task.description}</p>
                                                 </div>
 

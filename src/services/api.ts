@@ -246,7 +246,8 @@ export const TaskAPI = {
   info: (taskId: number) =>
     request<any>(`/task/info?taskId=${taskId}`),
 
-  addAttachments: (data: { taskId: number; attachments: string[] }) =>
+  // 添加附件，请求体格式：{ taskId, projectId, attachments: [{ filename, fileUrl, mimeType, sizeBytes, checksumSha256 }] }
+  addAttachments: (data: { taskId: number; projectId: number; attachments: { filename: string; fileUrl: string; mimeType: string; sizeBytes: number; checksumSha256: string }[] }) =>
     request<string>('/task/addAttachments', { method: 'POST', body: JSON.stringify(data) }),
 
   editAttachments: (data: { taskId: number; attachmentId: number; filename: string; fileUrl: string; mimeType: string; sizeBytes: number; checksumSha256: string }) =>

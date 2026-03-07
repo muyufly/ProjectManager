@@ -1,14 +1,59 @@
 import React, { useState, useContext, useEffect, useRef } from 'react';
-import { X, MessageSquare, Paperclip, Send, Clock, User as UserIcon, CheckCircle2, AlertCircle, Loader2 } from 'lucide-react';
-import { Task, TaskStatus, TaskPriority, Comment } from '../types';
+import { X, MessageSquare, Paperclip, Send, Clock, User as UserIcon, CheckCircle2, AlertCircle, Loader2, FileText, Image, File, Trash2, Download, Eye } from 'lucide-react';
+import { Task, TaskStatus, TaskPriority, Comment, Attachment } from '../types';
 import { AppContext } from '../constants';
 import { TaskAPI, CommentAPI, UploadAPI } from '../services/api';
+
+// 文件大小限制 (50MB)
+const MAX_FILE_SIZE = 50 * 1024 * 1024;
+
+// 允许的文件类型
+const ALLOWED_FILE_TYPES = [
+    // 图片
+    'image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/svg+xml',
+    // 文档
+    'application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    'application/vnd.ms-excel', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    'application/vnd.ms-powerpoint', 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+    'text/plain', 'text/markdown',
+    // 压缩包
+    'application/zip', 'application/x-rar-compressed', 'application/x-7z-compressed',
+    // 代码文件
+    'text/javascript', 'text/typescript', 'text/html', 'text/css', 'application/json'
+];
+
+// 文件类型图标映射
+const getFileIcon = (fileName: string) => {
+    const ext = fileName.split('.').pop()?.toLowerCase();
+    if (['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg'].includes(ext || '')) return Image;
+    if (['pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'txt', 'md'].includes(ext || '')) return FileText;
+    return File;
+};
+
+// 格式化文件大小
+const formatFileSize = (bytes: number): string => {
+    if (bytes === 0) return '0 B';
+    const k = 1024;
+    const sizes = ['B', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+};
 
 interface TaskDetailModalProps {
     task: Task;
     onClose: () => void;
     onUpdate?: () => void;
 }
+
+// 状态流转规则：定义每个状态可以流转到哪些状态
+const validTransitions: Record<TaskStatus, TaskStatus[]> = {
+    [TaskStatus.NOT_STARTED]: [TaskStatus.OPEN_FOR_CLAIM, TaskStatus.CANCELLED],
+    [TaskStatus.OPEN_FOR_CLAIM]: [TaskStatus.IN_PROGRESS, TaskStatus.CANCELLED],
+    [TaskStatus.IN_PROGRESS]: [TaskStatus.IN_REVIEW, TaskStatus.CANCELLED],
+    [TaskStatus.IN_REVIEW]: [TaskStatus.DONE, TaskStatus.IN_PROGRESS],
+    [TaskStatus.DONE]: [], // 已完成不可再切换
+    [TaskStatus.CANCELLED]: [TaskStatus.NOT_STARTED], // 可重新激活
+};
 
 export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ task, onClose, onUpdate }) => {
     const { state, setState } = useContext(AppContext);
@@ -17,9 +62,31 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ task, onClose,
     const [newComment, setNewComment] = useState('');
     const [loading, setLoading] = useState(false);
     const [uploading, setUploading] = useState(false);
+    const [uploadProgress, setUploadProgress] = useState(0);
+    const [uploadError, setUploadError] = useState<string | null>(null);
     const [comments, setComments] = useState<Comment[]>(task.comments || []);
     const [localTask, setLocalTask] = useState<Task>(task);
+    const [previewAttachment, setPreviewAttachment] = useState<Attachment | null>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
+
+    // 确认弹窗状态
+    const [confirmDialog, setConfirmDialog] = useState<{
+        isOpen: boolean;
+        title: string;
+        message: string;
+        confirmText: string;
+        cancelText: string;
+        onConfirm: () => void;
+        type: 'success' | 'danger' | 'warning';
+    }>({
+        isOpen: false,
+        title: '',
+        message: '',
+        confirmText: '确认',
+        cancelText: '取消',
+        onConfirm: () => {},
+        type: 'warning'
+    });
 
     const assignee = users.find(u => u.id === localTask.assigneeId || u.userId === localTask.assigneeId);
 
@@ -35,23 +102,63 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ task, onClose,
         fetchComments();
     }, [localTask.id, localTask.taskId]);
 
-    const calculateSHA256 = async (file: File) => {
+    // 计算文件的 SHA256 校验和
+    const calculateSHA256 = async (file: File): Promise<string> => {
         try {
             const buffer = await file.arrayBuffer();
             const hashBuffer = await crypto.subtle.digest('SHA-256', buffer);
             const hashArray = Array.from(new Uint8Array(hashBuffer));
             return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
         } catch (e) {
-            console.warn('Failed to calculate SHA-256', e);
-            return "";
+            console.warn('SHA256 计算失败:', e);
+            // 如果计算失败，返回一个占位符
+            return '0'.repeat(64);
         }
+    };
+
+    // 验证文件
+    const validateFile = (file: File): string | null => {
+        // 检查文件大小
+        if (file.size > MAX_FILE_SIZE) {
+            return `文件大小不能超过 ${formatFileSize(MAX_FILE_SIZE)}`;
+        }
+
+        // 检查文件类型
+        if (!ALLOWED_FILE_TYPES.includes(file.type)) {
+            return `不支持的文件类型: ${file.type || '未知类型'}。支持的类型: 图片、文档、压缩包、代码文件`;
+        }
+
+        return null;
     };
 
     const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         if (!file) return;
 
+        // 文件校验
+        const validationError = validateFile(file);
+        if (validationError) {
+            setUploadError(validationError);
+            showConfirmDialog(
+                '文件上传失败',
+                validationError,
+                () => {
+                    setUploadError(null);
+                    closeConfirmDialog();
+                },
+                'danger',
+                '知道了'
+            );
+            if (fileInputRef.current) {
+                fileInputRef.current.value = '';
+            }
+            return;
+        }
+
         setUploading(true);
+        setUploadProgress(0);
+        setUploadError(null);
+
         try {
             // 1. Get presigned URL
             const presignData = await UploadAPI.getPresignUpload({
@@ -70,40 +177,60 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ task, onClose,
                 ? (isCdnUrl ? `/oss-cdn-proxy${targetUrl.pathname}${targetUrl.search}` : `/oss-proxy${targetUrl.pathname}${targetUrl.search}`)
                 : presignData.uploadUrl;
 
-            const uploadRes = await fetch(uploadUrl, {
-                method: 'PUT',
-                body: file,
-                headers: {
-                    'Content-Type': file.type,
-                    'x-amz-acl': 'public-read'
-                },
+            console.log('Starting XHR Upload to:', uploadUrl);
+
+            // 3. Upload using XHR for progress tracking (避免扩展拦截)
+            await new Promise((resolve, reject) => {
+                const xhr = new XMLHttpRequest();
+                xhr.open('PUT', uploadUrl);
+                xhr.setRequestHeader('Content-Type', file.type);
+                xhr.setRequestHeader('x-amz-acl', 'public-read');
+
+                // 进度监听
+                xhr.upload.onprogress = (event) => {
+                    if (event.lengthComputable) {
+                        const progress = Math.round((event.loaded / event.total) * 100);
+                        setUploadProgress(progress);
+                    }
+                };
+
+                xhr.onload = () => {
+                    if (xhr.status >= 200 && xhr.status < 300) {
+                        resolve(xhr.response);
+                    } else {
+                        reject(new Error(`上传失败: ${xhr.status}`));
+                    }
+                };
+                xhr.onerror = () => reject(new Error('网络请求错误'));
+                xhr.send(file);
             });
-
-            if (!uploadRes.ok) {
-                throw new Error('上传文件失败');
-            }
-
-            // 3. Compute Checksum
-            const checksum = await calculateSHA256(file);
 
             // 4. Resolve the final public URL
-            const finalFileUrl = presignData.fileUrl ||
-                (presignData.objectKey ? `https://projectmgr.sgp1.cdn.digitaloceanspaces.com/${presignData.objectKey}` : null) ||
-                presignData.uploadUrl.split('?')[0].replace('.digitaloceanspaces.com', '.cdn.digitaloceanspaces.com');
+            const urlObj = new URL(presignData.uploadUrl);
+            const cleanPath = presignData.objectKey || urlObj.pathname;
+            const finalFileUrl = `https://projectmgr.sgp1.cdn.digitaloceanspaces.com/${cleanPath.replace(/^\//, '')}`;
 
-            // 5. Update task attachment via TaskAPI
-            await TaskAPI.editAttachments({
-                attachmentId: 0,
+            // 5. 计算文件 SHA256 校验和
+            const checksum = await calculateSHA256(file);
+
+            // 6. 调用 API 添加附件
+            // 请求体格式: { taskId, projectId, attachments: [{ filename, fileUrl, mimeType, sizeBytes, checksumSha256 }] }
+            const attachmentData = {
                 taskId: localTask.id || localTask.taskId || 0,
-                filename: file.name,
-                fileUrl: finalFileUrl,
-                mimeType: file.type || 'application/octet-stream',
-                sizeBytes: file.size,
-                checksumSha256: checksum
-            });
+                projectId: localTask.projectId || 0,
+                attachments: [{
+                    filename: file.name,
+                    fileUrl: finalFileUrl,
+                    mimeType: file.type || 'application/octet-stream',
+                    sizeBytes: file.size,
+                    checksumSha256: checksum
+                }]
+            };
+            console.log('addAttachments 请求体:', attachmentData);
+            await TaskAPI.addAttachments(attachmentData);
 
-            // 5. Update local state
-            const newAttachment = {
+            // 7. Update local state
+            const newAttachment: Attachment = {
                 id: Date.now(), // Temporary ID until reload
                 fileName: file.name,
                 fileUrl: finalFileUrl,
@@ -121,14 +248,88 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ task, onClose,
             }));
             onUpdate?.();
 
+            // 显示成功提示
+            showConfirmDialog(
+                '上传成功',
+                `文件 "${file.name}" 已成功上传`,
+                () => closeConfirmDialog(),
+                'success',
+                '知道了'
+            );
+
         } catch (err: any) {
-            console.error(err);
-            alert(err.message || '上传附件失败');
+            console.error('Upload Error:', err);
+            setUploadError(err.message || '上传附件失败');
+            showConfirmDialog(
+                '上传失败',
+                err.message || '上传附件失败，请稍后重试',
+                () => closeConfirmDialog(),
+                'danger',
+                '知道了'
+            );
         } finally {
             setUploading(false);
+            setUploadProgress(0);
             if (fileInputRef.current) {
                 fileInputRef.current.value = '';
             }
+        }
+    };
+
+    // 删除附件
+    const handleDeleteAttachment = async (attachmentId: number) => {
+        showConfirmDialog(
+            '删除附件',
+            '确定要删除这个附件吗？此操作不可恢复。',
+            async () => {
+                closeConfirmDialog();
+                try {
+                    // TODO: 调用删除附件 API
+                    // await TaskAPI.deleteAttachment(attachmentId);
+
+                    // 本地删除
+                    const updatedTask = {
+                        ...localTask,
+                        attachments: localTask.attachments?.filter(a => a.id !== attachmentId) || []
+                    };
+                    setLocalTask(updatedTask);
+                    setState(prev => ({
+                        ...prev,
+                        tasks: prev.tasks.map(t => (t.id === localTask.id || t.taskId === localTask.taskId) ? updatedTask : t)
+                    }));
+                    onUpdate?.();
+
+                    showConfirmDialog(
+                        '删除成功',
+                        '附件已删除',
+                        () => closeConfirmDialog(),
+                        'success',
+                        '知道了'
+                    );
+                } catch (err: any) {
+                    showConfirmDialog(
+                        '删除失败',
+                        err.message || '删除附件失败',
+                        () => closeConfirmDialog(),
+                        'danger',
+                        '知道了'
+                    );
+                }
+            },
+            'danger',
+            '确认删除',
+            '取消'
+        );
+    };
+
+    // 预览附件
+    const handlePreviewAttachment = (attachment: Attachment) => {
+        const isImage = attachment.fileName.match(/\.(jpg|jpeg|png|gif|webp|svg)$/i);
+        if (isImage) {
+            setPreviewAttachment(attachment);
+        } else {
+            // 非图片直接下载
+            window.open(attachment.fileUrl, '_blank');
         }
     };
 
@@ -156,13 +357,99 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ task, onClose,
         }
     };
 
+    // 检查状态流转是否合法
+    const isValidTransition = (currentStatus: TaskStatus, newStatus: TaskStatus): boolean => {
+        // 相同状态直接返回 true（允许点击当前状态，相当于刷新）
+        if (currentStatus === newStatus) return true;
+        const allowedTransitions = validTransitions[currentStatus] || [];
+        return allowedTransitions.includes(newStatus);
+    };
+
+    // 获取状态流转的提示信息
+    const getTransitionHint = (currentStatus: TaskStatus): string => {
+        const allowedTransitions = validTransitions[currentStatus] || [];
+        if (allowedTransitions.length === 0) {
+            return '当前状态为最终状态，无法继续流转';
+        }
+        const allowedLabels = allowedTransitions.map(s => statusMap[s]?.label || s).join('、');
+        return `可流转至: ${allowedLabels}`;
+    };
+
+    // 显示确认弹窗
+    const showConfirmDialog = (
+        title: string,
+        message: string,
+        onConfirm: () => void,
+        type: 'success' | 'danger' | 'warning' = 'warning',
+        confirmText: string = '确认',
+        cancelText: string = '取消'
+    ) => {
+        setConfirmDialog({
+            isOpen: true,
+            title,
+            message,
+            confirmText,
+            cancelText,
+            onConfirm,
+            type
+        });
+    };
+
+    // 关闭确认弹窗
+    const closeConfirmDialog = () => {
+        setConfirmDialog(prev => ({ ...prev, isOpen: false }));
+    };
+
     const handleStatusChange = async (newStatus: TaskStatus) => {
+        // 校验状态流转是否合法
+        if (!isValidTransition(localTask.status, newStatus)) {
+            const hint = getTransitionHint(localTask.status);
+            showConfirmDialog(
+                '非法的状态流转',
+                `当前状态: ${statusMap[localTask.status]?.label}\n${hint}`,
+                () => closeConfirmDialog(),
+                'warning',
+                '知道了'
+            );
+            return;
+        }
+
+        // 对于关键状态变更，添加确认弹窗
+        if (newStatus === TaskStatus.DONE || newStatus === TaskStatus.CANCELLED) {
+            const isDone = newStatus === TaskStatus.DONE;
+            showConfirmDialog(
+                isDone ? '完成任务' : '取消任务',
+                isDone
+                    ? `确定要将任务 "${localTask.title}" 标记为已完成吗？\n\n完成后任务将被标记为已结束，并记录完成时间。`
+                    : `确定要取消任务 "${localTask.title}" 吗？\n\n取消后任务将变为未开始状态，可以在需要时重新激活。`,
+                () => {
+                    closeConfirmDialog();
+                    executeStatusChange(newStatus);
+                },
+                isDone ? 'success' : 'danger',
+                isDone ? '确认完成' : '确认取消'
+            );
+            return;
+        }
+
+        // 直接执行状态变更
+        executeStatusChange(newStatus);
+    };
+
+    // 执行状态变更
+    const executeStatusChange = async (newStatus: TaskStatus) => {
         try {
             await TaskAPI.changeStatus({
                 taskId: localTask.id || localTask.taskId || 0,
                 status: newStatus
             });
-            const updated = { ...localTask, status: newStatus };
+
+            // 如果任务完成，记录完成时间
+            const updated: Task = { ...localTask, status: newStatus };
+            if (newStatus === TaskStatus.DONE) {
+                updated.completedAt = new Date().toISOString();
+            }
+
             setLocalTask(updated);
             // Update global state
             setState(prev => ({
@@ -171,7 +458,13 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ task, onClose,
             }));
             onUpdate?.();
         } catch (e) {
-            alert('状态更新失败');
+            showConfirmDialog(
+                '状态更新失败',
+                '任务状态更新失败，请稍后重试。',
+                () => closeConfirmDialog(),
+                'danger',
+                '知道了'
+            );
         }
     };
 
@@ -241,23 +534,53 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ task, onClose,
                                 )}
                             </div>
                         </div>
+                        {localTask.completedAt && (
+                            <div className="col-span-2">
+                                <h4 className="text-xs font-bold text-emerald-500 uppercase tracking-widest mb-3 flex items-center gap-2">
+                                    <CheckCircle2 size={14} /> 完成时间
+                                </h4>
+                                <div className="text-emerald-600 font-bold">
+                                    {new Date(localTask.completedAt).toLocaleString('zh-CN', {
+                                        year: 'numeric',
+                                        month: '2-digit',
+                                        day: '2-digit',
+                                        hour: '2-digit',
+                                        minute: '2-digit'
+                                    })}
+                                </div>
+                            </div>
+                        )}
                     </div>
 
                     <div className="mb-8">
-                        <h4 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-3">任务状态</h4>
+                        <h4 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-3">
+                            任务状态
+                            <span className="ml-2 text-[10px] font-medium text-slate-400 normal-case">
+                                ({getTransitionHint(localTask.status)})
+                            </span>
+                        </h4>
                         <div className="flex flex-wrap gap-2">
-                            {Object.entries(TaskStatus).map(([key, value]) => (
-                                <button
-                                    key={value}
-                                    onClick={() => handleStatusChange(value)}
-                                    className={`px-4 py-2 rounded-xl text-sm font-bold border transition-all ${localTask.status === value
-                                        ? 'bg-blue-500 text-white border-blue-500 shadow-md shadow-blue-200'
-                                        : 'bg-white text-slate-500 border-slate-200 hover:border-blue-300 hover:bg-blue-50/30'
+                            {Object.entries(TaskStatus).map(([key, value]) => {
+                                const isCurrent = localTask.status === value;
+                                const isValid = isValidTransition(localTask.status, value);
+                                return (
+                                    <button
+                                        key={value}
+                                        onClick={() => handleStatusChange(value)}
+                                        disabled={!isValid && !isCurrent}
+                                        title={!isValid && !isCurrent ? '当前状态不支持流转至此状态' : ''}
+                                        className={`px-4 py-2 rounded-xl text-sm font-bold border transition-all ${
+                                            isCurrent
+                                                ? 'bg-blue-500 text-white border-blue-500 shadow-md shadow-blue-200'
+                                                : isValid
+                                                    ? 'bg-white text-slate-500 border-slate-200 hover:border-blue-300 hover:bg-blue-50/30'
+                                                    : 'bg-slate-100 text-slate-300 border-slate-200 cursor-not-allowed'
                                         }`}
-                                >
-                                    {statusMap[value]?.label || value}
-                                </button>
-                            ))}
+                                    >
+                                        {statusMap[value]?.label || value}
+                                    </button>
+                                );
+                            })}
                         </div>
                     </div>
                 </div>
@@ -323,36 +646,94 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ task, onClose,
                                             <Paperclip size={24} />
                                         </div>
                                         <p className="text-slate-400 text-sm">暂无附件</p>
+                                        <p className="text-[10px] text-slate-300 mt-1">支持图片、文档、压缩包等格式</p>
                                     </div>
                                 ) : (
-                                    localTask.attachments.map(att => (
-                                        <a
-                                            key={att.id}
-                                            href={att.fileUrl}
-                                            target="_blank"
-                                            rel="noreferrer"
-                                            className="flex items-center gap-3 bg-white p-3 rounded-xl border border-slate-100 hover:border-blue-200 hover:shadow-md transition-all group"
-                                        >
-                                            <div className="bg-blue-50 p-2 rounded-lg text-blue-500 group-hover:bg-blue-100 transition-colors">
-                                                <Paperclip size={18} />
+                                    localTask.attachments.map(att => {
+                                        const FileIcon = getFileIcon(att.fileName);
+                                        const isImage = att.fileName.match(/\.(jpg|jpeg|png|gif|webp|svg)$/i);
+                                        return (
+                                            <div
+                                                key={att.id}
+                                                className="flex items-center gap-3 bg-white p-3 rounded-xl border border-slate-100 hover:border-blue-200 hover:shadow-md transition-all group"
+                                            >
+                                                <div className="bg-blue-50 p-2 rounded-lg text-blue-500 group-hover:bg-blue-100 transition-colors shrink-0">
+                                                    <FileIcon size={20} />
+                                                </div>
+                                                <div className="flex-1 min-w-0">
+                                                    <div className="text-sm font-bold text-slate-700 truncate" title={att.fileName}>{att.fileName}</div>
+                                                    <div className="text-[10px] text-slate-400 flex items-center gap-2">
+                                                        <span>{att.uploadedAt}</span>
+                                                        {att.fileUrl && (
+                                                            <span className="text-blue-400">· {(att as any).sizeBytes ? formatFileSize((att as any).sizeBytes) : '未知大小'}</span>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                                <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                    {isImage && (
+                                                        <button
+                                                            onClick={() => handlePreviewAttachment(att)}
+                                                            className="p-2 rounded-lg text-slate-400 hover:text-blue-500 hover:bg-blue-50 transition-colors"
+                                                            title="预览"
+                                                        >
+                                                            <Eye size={16} />
+                                                        </button>
+                                                    )}
+                                                    <a
+                                                        href={att.fileUrl}
+                                                        target="_blank"
+                                                        rel="noreferrer"
+                                                        className="p-2 rounded-lg text-slate-400 hover:text-blue-500 hover:bg-blue-50 transition-colors"
+                                                        title="下载"
+                                                    >
+                                                        <Download size={16} />
+                                                    </a>
+                                                    <button
+                                                        onClick={() => handleDeleteAttachment(att.id)}
+                                                        className="p-2 rounded-lg text-slate-400 hover:text-red-500 hover:bg-red-50 transition-colors"
+                                                        title="删除"
+                                                    >
+                                                        <Trash2 size={16} />
+                                                    </button>
+                                                </div>
                                             </div>
-                                            <div className="flex-1 min-w-0">
-                                                <div className="text-sm font-bold text-slate-700 truncate">{att.fileName}</div>
-                                                <div className="text-[10px] text-slate-400">{att.uploadedAt}</div>
-                                            </div>
-                                        </a>
-                                    ))
+                                        );
+                                    })
                                 )}
+
+                                {/* 上传进度条 */}
+                                {uploading && (
+                                    <div className="bg-white p-4 rounded-xl border border-blue-100">
+                                        <div className="flex items-center gap-3 mb-2">
+                                            <Loader2 size={18} className="animate-spin text-blue-500" />
+                                            <span className="text-sm font-bold text-slate-700">上传中...</span>
+                                            <span className="text-sm text-slate-500 ml-auto">{uploadProgress}%</span>
+                                        </div>
+                                        <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
+                                            <div
+                                                className="h-full bg-blue-500 rounded-full transition-all duration-300"
+                                                style={{ width: `${uploadProgress}%` }}
+                                            />
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* 上传提示 */}
+                                <div className="text-[10px] text-slate-400 text-center">
+                                    支持格式: 图片、PDF、Word、Excel、PPT、TXT、ZIP等 | 最大 50MB
+                                </div>
+
                                 <input
                                     type="file"
                                     ref={fileInputRef}
                                     className="hidden"
                                     onChange={handleFileUpload}
+                                    accept={ALLOWED_FILE_TYPES.join(',')}
                                 />
                                 <button
                                     onClick={() => fileInputRef.current?.click()}
                                     disabled={uploading}
-                                    className="w-full mt-4 py-3 border-2 border-dashed border-slate-200 rounded-2xl text-slate-400 hover:text-blue-500 hover:border-blue-500 hover:bg-blue-50 transition-all font-bold text-sm flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                                    className="w-full py-3 border-2 border-dashed border-slate-200 rounded-2xl text-slate-400 hover:text-blue-500 hover:border-blue-500 hover:bg-blue-50 transition-all font-bold text-sm flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                                 >
                                     {uploading ? (
                                         <><Loader2 size={18} className="animate-spin" /> 上传中...</>
@@ -387,6 +768,76 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ task, onClose,
                     )}
                 </div>
             </div>
+
+            {/* 图片预览弹窗 */}
+            {previewAttachment && (
+                <div
+                    className="fixed inset-0 bg-slate-900/90 backdrop-blur-sm flex items-center justify-center z-[200] p-4"
+                    onClick={() => setPreviewAttachment(null)}
+                >
+                    <div className="relative max-w-4xl max-h-[90vh] w-full">
+                        <button
+                            onClick={() => setPreviewAttachment(null)}
+                            className="absolute -top-12 right-0 p-2 text-white hover:text-slate-300 transition-colors"
+                        >
+                            <X size={28} />
+                        </button>
+                        <img
+                            src={previewAttachment.fileUrl}
+                            alt={previewAttachment.fileName}
+                            className="w-full h-full object-contain rounded-xl"
+                            onClick={(e) => e.stopPropagation()}
+                        />
+                        <div className="absolute bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-black/60 to-transparent rounded-b-xl">
+                            <p className="text-white font-bold">{previewAttachment.fileName}</p>
+                            <p className="text-white/70 text-sm">{previewAttachment.uploadedAt}</p>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* 确认弹窗 */}
+            {confirmDialog.isOpen && (
+                <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center z-[200] p-4">
+                    <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md p-8 animate-in fade-in zoom-in duration-200">
+                        <div className="flex items-center gap-4 mb-6">
+                            <div className={`w-14 h-14 rounded-2xl flex items-center justify-center ${
+                                confirmDialog.type === 'success' ? 'bg-emerald-100 text-emerald-600' :
+                                confirmDialog.type === 'danger' ? 'bg-red-100 text-red-600' :
+                                'bg-amber-100 text-amber-600'
+                            }`}>
+                                {confirmDialog.type === 'success' ? <CheckCircle2 size={28} /> :
+                                 confirmDialog.type === 'danger' ? <AlertCircle size={28} /> :
+                                 <AlertCircle size={28} />}
+                            </div>
+                            <h3 className="text-xl font-black text-slate-800">{confirmDialog.title}</h3>
+                        </div>
+                        <p className="text-slate-600 mb-8 whitespace-pre-line leading-relaxed">
+                            {confirmDialog.message}
+                        </p>
+                        <div className="flex gap-3">
+                            {confirmDialog.cancelText && (
+                                <button
+                                    onClick={closeConfirmDialog}
+                                    className="flex-1 px-6 py-3 rounded-xl border border-slate-200 text-slate-600 font-bold hover:bg-slate-50 transition-all"
+                                >
+                                    {confirmDialog.cancelText}
+                                </button>
+                            )}
+                            <button
+                                onClick={confirmDialog.onConfirm}
+                                className={`flex-1 px-6 py-3 rounded-xl font-bold text-white transition-all ${
+                                    confirmDialog.type === 'success' ? 'bg-emerald-500 hover:bg-emerald-600 shadow-lg shadow-emerald-200' :
+                                    confirmDialog.type === 'danger' ? 'bg-red-500 hover:bg-red-600 shadow-lg shadow-red-200' :
+                                    'bg-amber-500 hover:bg-amber-600 shadow-lg shadow-amber-200'
+                                }`}
+                            >
+                                {confirmDialog.confirmText}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };

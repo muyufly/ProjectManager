@@ -40,7 +40,8 @@ const App: React.FC = () => {
         const user = await UserAPI.getInfo();
         // Fetch teams
         const teamsRes = await TeamAPI.list(1, 100);
-        let teams = teamsRes.items || [];
+        // Handle both direct array response and { data: [...] } format
+        let teams = Array.isArray(teamsRes) ? teamsRes : (teamsRes.data || teamsRes.items || []);
 
         const uniqueProjects = new Map<number, Project>();
         let allTasks: any[] = [];
@@ -103,8 +104,10 @@ const App: React.FC = () => {
         for (const team of teams) {
           try {
             const projRes = await ProjectAPI.list(team.teamId || team.id, 1, 100);
-            if (projRes.items) {
-              for (const proj of projRes.items) {
+            // Handle both direct array response and { data: [...] } format
+            const projItems = Array.isArray(projRes) ? projRes : (projRes.data || projRes.items || []);
+            if (projItems.length > 0) {
+              for (const proj of projItems) {
                 const pId = proj.projectId || proj.id;
                 if (!uniqueProjects.has(pId)) {
                   uniqueProjects.set(pId, proj);
@@ -112,23 +115,35 @@ const App: React.FC = () => {
                   // Fetch tasks for each project
                   try {
                     const taskRes = await TaskAPI.list(pId);
-                    if (taskRes.items) {
-                      allTasks = [...allTasks, ...taskRes.items];
+                    // Handle both direct array response and { data: [...] } format
+                    const taskItems = Array.isArray(taskRes) ? taskRes : (taskRes.data || taskRes.items || []);
+                    // Add projectId to each task (API doesn't include it)
+                    const tasksWithProjectId = taskItems.map((t: any) => ({
+                      ...t,
+                      id: t.taskId || t.id,
+                      projectId: pId
+                    }));
+                    if (tasksWithProjectId.length > 0) {
+                      allTasks = [...allTasks, ...tasksWithProjectId];
                     }
-                  } catch (e) { }
+                  } catch (e) {
+                    console.warn('Failed to fetch tasks for project', pId, e);
+                  }
 
                   // Fetch members for each project
                   try {
                     const memberRes = await ProjectAPI.listMember(pId);
-                    if (memberRes.items) {
-                      const memberIds = memberRes.items.map((m: any) => Number(m.userId || m.id));
+                    // Handle both direct array response and { data: [...] } format
+                    const memberItems = Array.isArray(memberRes) ? memberRes : (memberRes.data || memberRes.items || []);
+                    if (memberItems.length > 0) {
+                      const memberIds = memberItems.map((m: any) => Number(m.userId || m.id));
                       uniqueProjects.set(pId, {
                         ...proj,
                         memberIds: memberIds
                       });
 
                       // Also ensure these users exist in allUsers
-                      for (const m of memberRes.items) {
+                      for (const m of memberItems) {
                         const mid = Number(m.userId || m.id);
                         if (!allUsers.find(u => Number(u.userId || u.id) === mid)) {
                           allUsers.push({
@@ -141,7 +156,9 @@ const App: React.FC = () => {
                         }
                       }
                     }
-                  } catch (e) { }
+                  } catch (e) {
+                    console.warn('Failed to fetch members for project', pId);
+                  }
                 }
               }
             }
@@ -156,8 +173,11 @@ const App: React.FC = () => {
         let notifications: any[] = [];
         try {
           const notifyRes = await NotifyAPI.list(1, 20);
-          notifications = notifyRes.items || [];
-        } catch (e) { }
+          // Handle both direct array response and { data: [...] } format
+          notifications = Array.isArray(notifyRes) ? notifyRes : (notifyRes.data || notifyRes.items || []);
+        } catch (e) {
+          console.warn('Failed to fetch notifications');
+        }
 
         // Map notifications to announcements
         const announcements = notifications.map(n => ({
