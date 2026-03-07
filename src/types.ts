@@ -83,6 +83,7 @@ export interface Project {
   managerId?: number;
   memberIds: number[];
   status: 'Active' | 'Archived' | 'Pending' | 'Completed' | string;
+  deadline?: string;
   creatorId?: number;
   createdAt: string;
 }
@@ -99,19 +100,24 @@ export interface Team {
 }
 
 export interface Notification {
-  id: number;
+  notificationId: number;
+  id: number; // mapped from notificationId
+  userId: number;
+  projectId?: number | null;
+  taskId?: number | null;
+  type: string;
   title: string;
-  content: string;
-  type: 'system' | 'invite' | 'task' | 'mention' | string;
-  isRead: boolean;
+  body: string;
+  payload: string;
+  read: boolean;
   createdAt: string;
+  readAt?: string | null;
 }
 
-export interface Announcement {
-  id: number;
-  title: string;
-  content: string;
-  date: string;
+export interface Announcement extends Notification {
+  // Legacy compatibility if needed, but we'll try to use Notification's fields
+  content?: string;
+  date?: string;
   time?: string;
   isRead?: boolean;
 }

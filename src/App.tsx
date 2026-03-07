@@ -181,10 +181,10 @@ const App: React.FC = () => {
 
         // Map notifications to announcements
         const announcements = notifications.map(n => ({
-          id: n.notificationId || n.id,
-          title: n.title,
-          content: n.content,
-          isRead: n.isRead,
+          ...n,
+          id: n.notificationId, // Unified ID
+          isRead: n.read,      // Unified property
+          content: n.body,    // Map body to content for UI compatibility
           date: n.createdAt.split('T')[0],
           time: n.createdAt.split('T')[1]?.substring(0, 5) || ''
         }));
