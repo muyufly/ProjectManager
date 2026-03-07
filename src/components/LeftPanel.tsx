@@ -10,7 +10,7 @@ interface LeftPanelProps {
 
 export const LeftPanel: React.FC<LeftPanelProps> = ({ showStats = false }) => {
   const { state } = useContext(AppContext);
-  const { projects, teams } = state;
+  const { projects, teams, tasks } = state;
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -24,21 +24,31 @@ export const LeftPanel: React.FC<LeftPanelProps> = ({ showStats = false }) => {
     return location.pathname === `/team/${tId}`;
   };
 
-  const completedCount = projects.filter(p => p.status === 'Completed').length;
-  const inProgressCount = projects.filter(p => p.status === 'Active').length;
-  const pendingCount = projects.filter(p => p.status === 'Pending').length;
-  const archivedCount = projects.filter(p => p.status === 'Archived').length;
+  // 任务统计
+  const now = new Date();
+  const threeDaysLater = new Date(now.getTime() + 3 * 24 * 60 * 60 * 1000);
 
-  // Simple check for approaching deadline (within 7 days)
-  const approachingCount = projects.filter(p => {
-    if (p.status === 'Completed' || p.status === 'Archived') return false;
-    if (!p.deadline) return false;
-    const deadline = new Date(p.deadline);
-    const today = new Date();
-    const diffTime = deadline.getTime() - today.getTime();
-    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)); 
-    return diffDays >= 0 && diffDays <= 7;
+  // 即将截止（3日内且未完成的）
+  const approachingCount = tasks.filter(t => {
+    const status = String(t.status);
+    if (status === 'DONE' || status === 'CANCELLED') return false;
+    const dueDateStr = (t as any).dueAt || (t as any).dueDate;
+    if (!dueDateStr) return false;
+    const dueDate = new Date(dueDateStr);
+    return dueDate >= now && dueDate <= threeDaysLater;
   }).length;
+
+  // 进行中
+  const inProgressCount = tasks.filter(t => String(t.status) === 'IN_PROGRESS').length;
+
+  // 已结束（已取消）
+  const endedCount = tasks.filter(t => String(t.status) === 'CANCELLED').length;
+
+  // 未开始
+  const notStartedCount = tasks.filter(t => String(t.status) === 'NOT_STARTED').length;
+
+  // 已完成
+  const completedCount = tasks.filter(t => String(t.status) === 'DONE').length;
 
   return (
     <div className="w-80 flex-shrink-0 flex flex-col gap-6">
@@ -103,60 +113,53 @@ export const LeftPanel: React.FC<LeftPanelProps> = ({ showStats = false }) => {
         </div>
       </div>
 
-      {/* Project Checklist Stats */}
+      {/* Project Checklist Stats - 任务统计 */}
       {showStats && (
         <div className="bg-white rounded-xl p-6 shadow-sm border border-slate-100">
           <h3 className="font-bold text-slate-800 text-lg mb-4">项目清单</h3>
-          <div className="space-y-3 text-sm">
-            <div className="flex justify-between items-center group cursor-default">
-              <span className="text-slate-600 group-hover:text-slate-900 transition-colors">可加入项目:</span>
-              <span className="font-bold text-slate-800 bg-slate-100 px-2 py-0.5 rounded-full">{state.availableProjects.length}</span>
-            </div>
-            <div className="flex justify-between items-center group cursor-default">
-              <span className="text-slate-600 group-hover:text-slate-900 transition-colors">已完成总数:</span>
-              <span className="font-bold text-slate-800 bg-slate-100 px-2 py-0.5 rounded-full">{completedCount}</span>
-            </div>
-            <div className="flex justify-between items-center group cursor-default">
-              <span className="text-slate-600 group-hover:text-slate-900 transition-colors">已加入项目:</span>
-              <span className="font-bold text-slate-800 bg-slate-100 px-2 py-0.5 rounded-full">{projects.length}</span>
-            </div>
 
-            <div className="pt-4 space-y-3 border-t border-slate-100 mt-2">
-              <div className="flex items-center justify-between text-xs">
-                <span className="flex items-center gap-2 text-orange-500 font-medium">
-                  <span className="w-1.5 h-1.5 bg-orange-500 rounded-full"></span>
-                  即将截止
-                </span>
-                <span className="text-slate-500">{approachingCount}</span>
-              </div>
-              <div className="flex items-center justify-between text-xs">
-                <span className="flex items-center gap-2 text-slate-700 font-medium">
-                  <span className="w-1.5 h-1.5 bg-slate-700 rounded-full"></span>
-                  进行中
-                </span>
-                <span className="text-slate-500">{inProgressCount}</span>
-              </div>
-              <div className="flex items-center justify-between text-xs">
-                <span className="flex items-center gap-2 text-red-500 font-medium">
-                  <span className="w-1.5 h-1.5 bg-red-500 rounded-full"></span>
-                  已结束
-                </span>
-                <span className="text-slate-500">{archivedCount}</span>
-              </div>
-              <div className="flex items-center justify-between text-xs">
-                <span className="flex items-center gap-2 text-blue-400 font-medium">
-                  <span className="w-1.5 h-1.5 bg-blue-400 rounded-full"></span>
-                  未开始
-                </span>
-                <span className="text-slate-500">{pendingCount}</span>
-              </div>
-              <div className="flex items-center justify-between text-xs">
-                <span className="flex items-center gap-2 text-green-500 font-medium">
-                  <span className="w-1.5 h-1.5 bg-green-500 rounded-full"></span>
-                  已完成
-                </span>
-                <span className="text-slate-500">{completedCount}</span>
-              </div>
+          <div className="pt-4 space-y-3">
+            <div className="flex items-center justify-between text-sm">
+              <span className="flex items-center gap-2 text-orange-500 font-medium">
+                <span className="w-2 h-2 bg-orange-500 rounded-full"></span>
+                即将截止
+              </span>
+              <span className="font-bold text-slate-700 bg-orange-50 px-2.5 py-1 rounded-full min-w-[28px] text-center">{approachingCount}</span>
+            </div>
+            <div className="flex items-center justify-between text-sm">
+              <span className="flex items-center gap-2 text-blue-600 font-medium">
+                <span className="w-2 h-2 bg-blue-600 rounded-full"></span>
+                进行中
+              </span>
+              <span className="font-bold text-slate-700 bg-blue-50 px-2.5 py-1 rounded-full min-w-[28px] text-center">{inProgressCount}</span>
+            </div>
+            <div className="flex items-center justify-between text-sm">
+              <span className="flex items-center gap-2 text-red-500 font-medium">
+                <span className="w-2 h-2 bg-red-500 rounded-full"></span>
+                已结束
+              </span>
+              <span className="font-bold text-slate-700 bg-red-50 px-2.5 py-1 rounded-full min-w-[28px] text-center">{endedCount}</span>
+            </div>
+            <div className="flex items-center justify-between text-sm">
+              <span className="flex items-center gap-2 text-slate-500 font-medium">
+                <span className="w-2 h-2 bg-slate-500 rounded-full"></span>
+                未开始
+              </span>
+              <span className="font-bold text-slate-700 bg-slate-100 px-2.5 py-1 rounded-full min-w-[28px] text-center">{notStartedCount}</span>
+            </div>
+            <div className="flex items-center justify-between text-sm">
+              <span className="flex items-center gap-2 text-green-500 font-medium">
+                <span className="w-2 h-2 bg-green-500 rounded-full"></span>
+                已完成
+              </span>
+              <span className="font-bold text-slate-700 bg-green-50 px-2.5 py-1 rounded-full min-w-[28px] text-center">{completedCount}</span>
+            </div>
+          </div>
+
+          <div className="mt-4 pt-4 border-t border-slate-100">
+            <div className="flex justify-between items-center text-xs text-slate-500">
+              <span>任务总数</span>
+              <span className="font-bold text-slate-700">{tasks.length}</span>
             </div>
           </div>
         </div>
