@@ -178,13 +178,14 @@ export const TasksPage: React.FC = () => {
                                     const formattedDate = `${dateObj.getMonth() + 1}月${dateObj.getDate()}日`;
                                     const isLatest = index === 0;
                                     const isDone = task.status === TaskStatus.DONE;
+                                    const isCancelled = task.status === TaskStatus.CANCELLED;
 
                                     const taskId = task.id || task.taskId;
 
                                     return (
                                         <div
                                             key={taskId}
-                                            className="relative group cursor-pointer"
+                                            className={`relative group cursor-pointer ${isCancelled ? 'opacity-60' : ''}`}
                                             onClick={() => setSelectedTask(task)}
                                         >
                                             {/* 庆祝动画 */}
@@ -195,32 +196,34 @@ export const TasksPage: React.FC = () => {
                                                 </div>
                                             )}
 
-                                            <div className={`absolute -left-[54px] top-4 w-6 h-6 rounded-full border-4 border-white shadow-md z-10 transition-all duration-500 ${isDone ? 'bg-emerald-500 scale-110 ring-4 ring-emerald-100' : isLatest ? 'bg-blue-600 scale-125 ring-4 ring-blue-100' : 'bg-slate-200 group-hover:bg-blue-400'}`}></div>
+                                            <div className={`absolute -left-[54px] top-4 w-6 h-6 rounded-full border-4 border-white shadow-md z-10 transition-all duration-500 ${isDone ? 'bg-emerald-500 scale-110 ring-4 ring-emerald-100' : isCancelled ? 'bg-gray-400 ring-4 ring-gray-100' : isLatest ? 'bg-blue-600 scale-125 ring-4 ring-blue-100' : 'bg-slate-200 group-hover:bg-blue-400'}`}></div>
 
-                                            <div className={`bg-white p-6 rounded-[2rem] shadow-sm border group-hover:shadow-xl transition-all flex flex-col md:flex-row md:items-center gap-6 ${isDone ? 'border-emerald-100 group-hover:border-emerald-200' : 'border-slate-50 group-hover:border-blue-100'}`}>
+                                            <div className={`bg-white p-6 rounded-[2rem] shadow-sm border group-hover:shadow-xl transition-all flex flex-col md:flex-row md:items-center gap-6 ${isDone ? 'border-emerald-100 group-hover:border-emerald-200' : isCancelled ? 'border-gray-200 group-hover:border-gray-300 bg-gray-50' : 'border-slate-50 group-hover:border-blue-100'}`}>
                                                 <div className="flex items-center gap-4 min-w-[160px]">
-                                                    <div className="w-12 h-12 rounded-2xl bg-slate-100 overflow-hidden border border-white shadow-sm ring-2 ring-transparent group-hover:ring-blue-100 transition-all">
+                                                    <div className={`w-12 h-12 rounded-2xl overflow-hidden border border-white shadow-sm ring-2 ring-transparent transition-all ${isCancelled ? 'bg-gray-200 grayscale' : 'bg-slate-100 group-hover:ring-blue-100'}`}>
                                                         <img src={assignee?.avatar || 'https://api.dicebear.com/7.x/avataaars/svg?seed=fallback'} alt="" className="w-full h-full object-cover" />
                                                     </div>
                                                     <div>
-                                                        <div className="text-sm font-black text-slate-800">{assignee?.name || '待认领'}</div>
-                                                        <div className={`text-[10px] font-bold uppercase tracking-widest ${isDone ? 'text-emerald-500' : 'text-slate-400'}`}>
-                                                            {isDone ? '✓ 已完成 · ' : ''}{formattedDate}
+                                                        <div className={`text-sm font-black ${isCancelled ? 'text-gray-500' : 'text-slate-800'}`}>{assignee?.name || '待认领'}</div>
+                                                        <div className={`text-[10px] font-bold uppercase tracking-widest ${isDone ? 'text-emerald-500' : isCancelled ? 'text-gray-400' : 'text-slate-400'}`}>
+                                                            {isDone ? '✓ 已完成 · ' : isCancelled ? '✗ 已取消 · ' : ''}{formattedDate}
                                                         </div>
                                                     </div>
                                                 </div>
 
                                                 <div className="flex-1">
-                                                    <h5 className={`font-bold text-lg group-hover:text-blue-600 transition-colors uppercase tracking-tight ${isDone ? 'text-slate-600 line-through decoration-slate-300' : 'text-slate-800'}`}>{task.title}</h5>
-                                                    <p className="text-slate-400 text-sm mt-1 line-clamp-1 font-medium italic opacity-80">{task.description}</p>
+                                                    <h5 className={`font-bold text-lg transition-colors uppercase tracking-tight ${isCancelled ? 'text-gray-500 line-through decoration-gray-300' : isDone ? 'text-slate-600 line-through decoration-slate-300 group-hover:text-blue-600' : 'text-slate-800 group-hover:text-blue-600'}`}>{task.title}</h5>
+                                                    <p className={`text-sm mt-1 line-clamp-1 font-medium italic opacity-80 ${isCancelled ? 'text-gray-400' : 'text-slate-400'}`}>{task.description}</p>
                                                 </div>
 
                                                 <div className="flex items-center gap-6">
-                                                    <span className={`text-[10px] font-black px-4 py-2 rounded-xl uppercase tracking-[0.1em] shadow-sm ${task.status === TaskStatus.DONE ? 'bg-emerald-50 text-emerald-600 border border-emerald-100' :
+                                                    <span className={`text-[10px] font-black px-4 py-2 rounded-xl uppercase tracking-[0.1em] shadow-sm ${
+                                                            task.status === TaskStatus.DONE ? 'bg-emerald-50 text-emerald-600 border border-emerald-100' :
+                                                            task.status === TaskStatus.CANCELLED ? 'bg-gray-100 text-gray-600 border border-gray-200' :
                                                             task.status === TaskStatus.IN_PROGRESS ? 'bg-orange-50 text-orange-600 border border-orange-100' :
                                                                 'bg-slate-50 text-slate-400 border border-slate-100'
                                                         }`}>
-                                                        {task.status}
+                                                        {task.status === TaskStatus.CANCELLED ? '已取消' : task.status}
                                                     </span>
                                                     <div className="w-10 h-10 rounded-full bg-slate-50 flex items-center justify-center group-hover:bg-blue-50 transition-colors">
                                                         <ChevronRight className="text-slate-300 group-hover:text-blue-500 transition-colors" size={20} />

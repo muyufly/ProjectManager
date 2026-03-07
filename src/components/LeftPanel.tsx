@@ -41,13 +41,13 @@ export const LeftPanel: React.FC<LeftPanelProps> = ({ showStats = false }) => {
   // 进行中
   const inProgressCount = tasks.filter(t => String(t.status) === 'IN_PROGRESS').length;
 
-  // 已结束（已取消）
-  const endedCount = tasks.filter(t => String(t.status) === 'CANCELLED').length;
+  // 已取消（使用特殊UI - 灰色样式）
+  const cancelledCount = tasks.filter(t => String(t.status) === 'CANCELLED').length;
 
   // 未开始
   const notStartedCount = tasks.filter(t => String(t.status) === 'NOT_STARTED').length;
 
-  // 已完成
+  // 已完成（绿色样式）
   const completedCount = tasks.filter(t => String(t.status) === 'DONE').length;
 
   return (
@@ -134,11 +134,11 @@ export const LeftPanel: React.FC<LeftPanelProps> = ({ showStats = false }) => {
               <span className="font-bold text-slate-700 bg-blue-50 px-2.5 py-1 rounded-full min-w-[28px] text-center">{inProgressCount}</span>
             </div>
             <div className="flex items-center justify-between text-sm">
-              <span className="flex items-center gap-2 text-red-500 font-medium">
-                <span className="w-2 h-2 bg-red-500 rounded-full"></span>
-                已结束
+              <span className="flex items-center gap-2 text-gray-500 font-medium">
+                <span className="w-2 h-2 bg-gray-500 rounded-full"></span>
+                已取消
               </span>
-              <span className="font-bold text-slate-700 bg-red-50 px-2.5 py-1 rounded-full min-w-[28px] text-center">{endedCount}</span>
+              <span className="font-bold text-slate-700 bg-gray-100 px-2.5 py-1 rounded-full min-w-[28px] text-center">{cancelledCount}</span>
             </div>
             <div className="flex items-center justify-between text-sm">
               <span className="flex items-center gap-2 text-slate-500 font-medium">
