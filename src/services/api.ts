@@ -231,10 +231,19 @@ export const TaskAPI = {
   list: (projectId: number, page: number = 1, size: number = 50) =>
     request<any>(`/task/list?projectId=${projectId}&page=${page}&size=${size}`),
 
-  edit: (data: { taskId: number; title?: string; description?: string; priority?: TaskPriority; dueDate?: string }) =>
+  edit: (data: {
+    taskId: number;
+    title?: string;
+    description?: string;
+    priority?: TaskPriority;
+    dueDate?: string;
+    startAt?: string;
+    dueAt?: string;
+    currentOwnerUserId?: number
+  }) =>
     request<string>('/task/edit', { method: 'POST', body: JSON.stringify(data) }),
 
-  assign: (data: { taskId: number; assigneeId: number }) =>
+  assign: (data: { taskId: number; projectId: number; userId: number }) =>
     request<string>('/task/assign', { method: 'POST', body: JSON.stringify(data) }),
 
   claim: (data: { taskId: number }) =>

@@ -2,11 +2,13 @@ import React, { useContext, useState, useMemo } from 'react';
 import { AppContext } from '../constants';
 import type { Project, Task } from '../types';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Calendar, FileText, Send, MessageSquare, ListTodo, Plus, ChevronRight, LayoutGrid, Clock, Users as UsersIcon, Filter, CheckCircle2, Circle, RotateCcw, XCircle, Search } from 'lucide-react';
+import { Calendar, FileText, Send, MessageSquare, ListTodo, Plus, ChevronRight, LayoutGrid, Clock, Users as UsersIcon, Filter, CheckCircle2, Circle, RotateCcw, XCircle, Search, Pencil, UserPlus } from 'lucide-react';
 import { CreateTaskModal } from '../components/CreateTaskModal';
+import { EditTaskModal } from '../components/EditTaskModal';
+import { AssignTaskModal } from '../components/AssignTaskModal';
 import { TaskDetailModal } from '../components/TaskDetailModal';
 import { TaskAPI } from '../services/api';
-import { TaskStatus } from '../types';
+import { TaskStatus, TaskPriority } from '../types';
 
 type TaskFilter = 'all' | 'done' | 'in_progress' | 'pending' | 'cancelled';
 
@@ -17,10 +19,14 @@ export const TasksPage: React.FC = () => {
     const navigate = useNavigate();
     const [isTaskModalOpen, setIsTaskModalOpen] = useState(false);
     const [selectedTask, setSelectedTask] = useState<Task | null>(null);
+    const [editingTask, setEditingTask] = useState<Task | null>(null);
+    const [assigningTask, setAssigningTask] = useState<Task | null>(null);
     const [activeProjectId, setActiveProjectId] = useState<number | null>(null);
     const [taskFilter, setTaskFilter] = useState<TaskFilter>('all');
     const [searchQuery, setSearchQuery] = useState('');
     const [showCelebration, setShowCelebration] = useState<number | null>(null);
+
+    const isManager = state.currentUser?.role === '管理员' || state.currentUser?.role === 'MANAGER';
 
     // 筛选任务 - 使用当前状态值
     const filterTasks = (projectTasks: Task[], filter: TaskFilter, query: string): Task[] => {
@@ -146,11 +152,10 @@ export const TasksPage: React.FC = () => {
                                         <button
                                             key={key}
                                             onClick={() => setTaskFilter(key as TaskFilter)}
-                                            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
-                                                taskFilter === key
-                                                    ? 'bg-white text-blue-600 shadow-sm'
-                                                    : 'text-slate-500 hover:text-slate-700'
-                                            }`}
+                                            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${taskFilter === key
+                                                ? 'bg-white text-blue-600 shadow-sm'
+                                                : 'text-slate-500 hover:text-slate-700'
+                                                }`}
                                             title={label}
                                         >
                                             <Icon size={14} />
@@ -216,9 +221,33 @@ export const TasksPage: React.FC = () => {
                                                 </div>
 
                                                 <div className="flex items-center gap-6">
+                                                    {isManager && !isDone && (
+                                                        <div className="flex items-center gap-2 pr-4 border-r border-slate-100">
+                                                            <button
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation();
+                                                                    setAssigningTask(task);
+                                                                }}
+                                                                className="p-2 text-slate-400 hover:text-blue-500 hover:bg-blue-50 rounded-xl transition-all"
+                                                                title="分配负责人"
+                                                            >
+                                                                <UserPlus size={18} />
+                                                            </button>
+                                                            <button
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation();
+                                                                    setEditingTask(task);
+                                                                }}
+                                                                className="p-2 text-slate-400 hover:text-blue-500 hover:bg-blue-50 rounded-xl transition-all"
+                                                                title="编辑任务"
+                                                            >
+                                                                <Pencil size={18} />
+                                                            </button>
+                                                        </div>
+                                                    )}
                                                     <span className={`text-[10px] font-black px-4 py-2 rounded-xl uppercase tracking-[0.1em] shadow-sm ${task.status === TaskStatus.DONE ? 'bg-emerald-50 text-emerald-600 border border-emerald-100' :
-                                                            task.status === TaskStatus.IN_PROGRESS ? 'bg-orange-50 text-orange-600 border border-orange-100' :
-                                                                'bg-slate-50 text-slate-400 border border-slate-100'
+                                                        task.status === TaskStatus.IN_PROGRESS ? 'bg-orange-50 text-orange-600 border border-orange-100' :
+                                                            'bg-slate-50 text-slate-400 border border-slate-100'
                                                         }`}>
                                                         {task.status}
                                                     </span>
@@ -311,6 +340,72 @@ export const TasksPage: React.FC = () => {
                         const updatedTask = tasks.find(t => (t.id === taskId || t.taskId === taskId));
                         if (updatedTask) {
                             setSelectedTask(updatedTask);
+                        }
+                    }}
+                />
+            )}
+
+            {editingTask && (
+                <EditTaskModal
+                    task={editingTask}
+                    onClose={() => setEditingTask(null)}
+                    onSubmit={async (data) => {
+                        try {
+                            const taskId = editingTask.id || editingTask.taskId || 0;
+                            await TaskAPI.edit({
+                                taskId: data.taskId,
+                                title: data.title,
+                                description: data.description,
+                                priority: data.priority,
+                                dueAt: data.dueAt,
+                                startAt: data.startAt,
+                                currentOwnerUserId: data.currentOwnerUserId || 0
+                            });
+
+                            const updated: Task = {
+                                ...editingTask,
+                                title: data.title,
+                                description: data.description,
+                                priority: data.priority,
+                                dueDate: data.dueAt
+                            };
+
+                            setState(prev => ({
+                                ...prev,
+                                tasks: prev.tasks.map(t => (t.id === taskId || t.taskId === taskId) ? updated : t)
+                            }));
+                        } catch (e) {
+                            alert('更新任务失败');
+                        }
+                    }}
+                />
+            )}
+
+            {assigningTask && (
+                <AssignTaskModal
+                    task={assigningTask}
+                    users={users}
+                    onClose={() => setAssigningTask(null)}
+                    onSubmit={async (data) => {
+                        try {
+                            const taskId = assigningTask.id || assigningTask.taskId || 0;
+                            await TaskAPI.assign({
+                                taskId: data.taskId,
+                                projectId: data.projectId,
+                                userId: data.userId
+                            });
+
+                            const updated: Task = {
+                                ...assigningTask,
+                                assigneeId: data.userId
+                            };
+
+                            setState(prev => ({
+                                ...prev,
+                                tasks: prev.tasks.map(t => (t.id === taskId || t.taskId === taskId) ? updated : t)
+                            }));
+                        } catch (e) {
+                            alert('分配任务失败');
                         }
                     }}
                 />

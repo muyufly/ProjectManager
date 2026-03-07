@@ -70,12 +70,14 @@ export interface Task {
   id: number;
   taskId?: number;
   title: string;
-  description: string;
+  description?: string;
   status: TaskStatus;
   priority: TaskPriority;
   projectId: number;
   assigneeId?: number;
-  dueDate: string;
+  dueDate?: string;
+  dueAt?: string;    // Backend field
+  startAt?: string;  // Backend field
   completedAt?: string;
   dependencies: number[];
   comments: Comment[];
