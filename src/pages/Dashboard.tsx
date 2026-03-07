@@ -3,16 +3,20 @@ import { AppContext } from '../constants';
 import { LeftPanel } from '../components/LeftPanel';
 import { CreateProjectModal } from '../components/CreateProjectModal';
 import { CreateTeamModal } from '../components/CreateTeamModal';
-import { ProjectAPI, TeamAPI, NotifyAPI } from '../services/api';
-import { Plus, LayoutGrid, Megaphone, ArrowRight, FolderPlus, Users as UsersIcon, CheckCircle2, Check } from 'lucide-react';
+import { ProjectAPI, TeamAPI, NotifyAPI, TaskAPI } from '../services/api';
+import { Plus, LayoutGrid, Megaphone, ArrowRight, FolderPlus, Users as UsersIcon, CheckCircle2, Check, ClipboardList, Loader2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import type { Project } from '../types';
+import type { Project, Task } from '../types';
+import { TaskStatus } from '../types';
+import { TaskDetailModal } from '../components/TaskDetailModal';
 
 export const Dashboard: React.FC = () => {
     const { state, setState } = useContext(AppContext);
-    const { projects, announcements, availableProjects, teams } = state;
+    const { projects, announcements, tasks, teams } = state;
     const [isProjectModalOpen, setIsProjectModalOpen] = useState(false);
     const [isTeamModalOpen, setIsTeamModalOpen] = useState(false);
+    const [selectedTask, setSelectedTask] = useState<Task | null>(null);
+    const [claimingId, setClaimingId] = useState<number | null>(null);
     const navigate = useNavigate();
 
     const handleCreateProject = async (data: { name: string; description: string; teamId: number }) => {
@@ -89,6 +93,35 @@ export const Dashboard: React.FC = () => {
             console.error('Failed to mark as read', e);
         }
     };
+
+    const handleClaimTask = async (task: Task) => {
+        setClaimingId(task.id || task.taskId || 0);
+        try {
+            const taskId = task.id || task.taskId || 0;
+            await TaskAPI.claim({ taskId });
+
+            // Update local state
+            const updated: Task = {
+                ...task,
+                status: TaskStatus.IN_PROGRESS,
+                assigneeId: state.currentUser?.userId || state.currentUser?.id || 0
+            };
+
+            setState(prev => ({
+                ...prev,
+                tasks: prev.tasks.map(t => (t.id === taskId || t.taskId === taskId) ? updated : t)
+            }));
+
+            alert('认领成功！任务已进入“进行中”状态。');
+        } catch (e) {
+            console.error('Claim Error:', e);
+            alert('领用失败，请稍后重试。');
+        } finally {
+            setClaimingId(null);
+        }
+    };
+
+    const claimableTasks = tasks.filter(t => t.status === TaskStatus.OPEN_FOR_CLAIM);
 
     return (
         <div className="flex gap-8 h-full min-h-0 min-w-0 overflow-hidden">
@@ -238,44 +271,61 @@ export const Dashboard: React.FC = () => {
                     </div>
                 </div>
 
-                {/* Available Projects to Join */}
+                {/* Available Tasks to Claim */}
                 <div className="space-y-6">
                     <h2 className="text-xl font-black text-slate-800 uppercase tracking-widest flex items-center gap-2">
-                        <CheckCircle2 className="text-emerald-500" size={20} /> 可加入项目
+                        <ClipboardList className="text-emerald-500" size={20} /> 可申领任务
                     </h2>
                     <div className="bg-white rounded-3xl border border-slate-100 p-8 shadow-sm">
                         <div className="overflow-x-auto">
                             <table className="w-full text-left">
                                 <thead className="border-b border-slate-100">
                                     <tr>
-                                        <th className="pb-4 font-bold text-slate-400 text-[10px] uppercase tracking-widest">项目</th>
+                                        <th className="pb-4 font-bold text-slate-400 text-[10px] uppercase tracking-widest">任务名称</th>
                                         <th className="pb-4 font-bold text-slate-400 text-[10px] uppercase tracking-widest">描述</th>
+                                        <th className="pb-4 font-bold text-slate-400 text-[10px] uppercase tracking-widest">所属项目</th>
                                         <th className="pb-4 font-bold text-slate-400 text-[10px] uppercase tracking-widest text-right">操作</th>
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-slate-50">
-                                    {availableProjects.length === 0 ? (
+                                    {claimableTasks.length === 0 ? (
                                         <tr>
-                                            <td colSpan={3} className="py-8 text-center text-slate-400 italic">暂无可加入项目</td>
+                                            <td colSpan={4} className="py-8 text-center text-slate-400 italic">暂无可申领任务</td>
                                         </tr>
                                     ) : (
-                                        availableProjects.map(p => (
-                                            <tr key={p.id} className="group hover:bg-slate-50/50 transition-colors">
-                                                <td className="py-5">
-                                                    <div className="font-bold text-slate-800">{p.name}</div>
-                                                    <div className="text-[10px] text-slate-400">{p.deadline} 截止</div>
-                                                </td>
-                                                <td className="py-5 text-sm text-slate-600 max-w-md truncate">{p.description}</td>
-                                                <td className="py-5 text-right">
-                                                    <button
-                                                        onClick={() => alert('已发送加入申请！')}
-                                                        className="px-4 py-1.5 bg-white border border-slate-200 text-slate-700 font-bold text-xs rounded-lg hover:border-blue-500 hover:text-blue-500 transition-all"
-                                                    >
-                                                        申请加入
-                                                    </button>
-                                                </td>
-                                            </tr>
-                                        ))
+                                        claimableTasks.map(t => {
+                                            const project = projects.find(p => (p.projectId || p.id) === t.projectId);
+                                            const taskId = t.id || t.taskId;
+                                            return (
+                                                <tr key={taskId} className="group hover:bg-slate-50/50 transition-colors">
+                                                    <td className="py-5">
+                                                        <div
+                                                            className="font-bold text-slate-800 cursor-pointer hover:text-blue-500 transition-colors"
+                                                            onClick={() => setSelectedTask(t)}
+                                                        >
+                                                            {t.title}
+                                                        </div>
+                                                        <div className="text-[10px] text-slate-400">{t.dueDate} 截止</div>
+                                                    </td>
+                                                    <td className="py-5 text-sm text-slate-600 max-w-xs truncate">{t.description}</td>
+                                                    <td className="py-5">
+                                                        <span className="text-xs font-bold text-blue-500 bg-blue-50 px-2 py-1 rounded-lg">
+                                                            {project?.name || '未知项目'}
+                                                        </span>
+                                                    </td>
+                                                    <td className="py-5 text-right">
+                                                        <button
+                                                            onClick={() => handleClaimTask(t)}
+                                                            disabled={claimingId === taskId}
+                                                            className="px-4 py-1.5 bg-blue-500 text-white font-bold text-xs rounded-lg hover:bg-blue-600 transition-all flex items-center gap-1 ml-auto disabled:bg-slate-300"
+                                                        >
+                                                            {claimingId === taskId ? <Loader2 size={12} className="animate-spin" /> : <Plus size={12} />}
+                                                            认领任务
+                                                        </button>
+                                                    </td>
+                                                </tr>
+                                            );
+                                        })
                                     )}
                                 </tbody>
                             </table>
@@ -296,6 +346,13 @@ export const Dashboard: React.FC = () => {
                 <CreateTeamModal
                     onClose={() => setIsTeamModalOpen(false)}
                     onSubmit={handleCreateTeam}
+                />
+            )}
+
+            {selectedTask && (
+                <TaskDetailModal
+                    task={selectedTask}
+                    onClose={() => setSelectedTask(null)}
                 />
             )}
         </div>
