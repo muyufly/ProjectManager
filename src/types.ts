@@ -50,11 +50,20 @@ export interface Comment {
   userId?: number;
 }
 
+// 附件接口 - 匹配后端返回的数据结构
 export interface Attachment {
-  id: number;
-  fileName: string;
-  fileUrl: string;
-  uploadedAt: string;
+  attachmentId: number;
+  filename: string;
+  downloadUrl: string;
+  mimeType: string;
+  sizeBytes: number;
+  versionNo: number;
+  createdAt: string;
+  // 前端兼容字段
+  id?: number;
+  fileName?: string;
+  fileUrl?: string;
+  uploadedAt?: string;
 }
 
 export interface Task {

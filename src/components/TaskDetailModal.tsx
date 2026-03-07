@@ -95,6 +95,28 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ task, onClose,
 
     const assignee = users.find(u => u.id === localTask.assigneeId || u.userId === localTask.assigneeId);
 
+    // 当 task prop 变化时，获取任务详情（包括附件列表）
+    useEffect(() => {
+        const fetchTaskDetail = async () => {
+            const taskId = task.id || task.taskId || 0;
+            if (!taskId) return;
+            try {
+                const taskDetail = await TaskAPI.info(taskId);
+                if (taskDetail) {
+                    // 更新 localTask，包括附件列表
+                    setLocalTask(prev => ({
+                        ...prev,
+                        ...taskDetail,
+                        attachments: taskDetail.attachments || prev.attachments || []
+                    }));
+                }
+            } catch (e) {
+                console.error('Failed to fetch task detail', e);
+            }
+        };
+        fetchTaskDetail();
+    }, [task.id, task.taskId]);
+
     // 当 localTask 变化时，重新获取评论列表
     useEffect(() => {
         const fetchComments = async () => {
@@ -108,7 +130,7 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ task, onClose,
             }
         };
         fetchComments();
-    }, [localTask]);
+    }, [localTask.id, localTask.taskId]);
 
     // 计算文件的 SHA256 校验和
     const calculateSHA256 = async (file: File): Promise<string> => {
@@ -239,10 +261,13 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ task, onClose,
 
             // 7. Update local state
             const newAttachment: Attachment = {
-                id: Date.now(), // Temporary ID until reload
-                fileName: file.name,
-                fileUrl: finalFileUrl,
-                uploadedAt: new Date().toISOString().split('T')[0]
+                attachmentId: Date.now(), // Temporary ID until reload
+                filename: file.name,
+                downloadUrl: finalFileUrl,
+                mimeType: file.type || 'application/octet-stream',
+                sizeBytes: file.size,
+                versionNo: 1,
+                createdAt: new Date().toISOString()
             };
 
             const updatedTask = {
@@ -332,12 +357,14 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ task, onClose,
 
     // 预览附件
     const handlePreviewAttachment = (attachment: Attachment) => {
-        const isImage = attachment.fileName.match(/\.(jpg|jpeg|png|gif|webp|svg)$/i);
+        const fileName = attachment.filename || attachment.fileName || '';
+        const fileUrl = attachment.downloadUrl || attachment.fileUrl || '';
+        const isImage = fileName.match(/\.(jpg|jpeg|png|gif|webp|svg)$/i);
         if (isImage) {
             setPreviewAttachment(attachment);
         } else {
             // 非图片直接下载
-            window.open(attachment.fileUrl, '_blank');
+            window.open(fileUrl, '_blank');
         }
     };
 
@@ -736,22 +763,29 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ task, onClose,
                                     </div>
                                 ) : (
                                     localTask.attachments.map(att => {
-                                        const FileIcon = getFileIcon(att.fileName);
-                                        const isImage = att.fileName.match(/\.(jpg|jpeg|png|gif|webp|svg)$/i);
+                                        // 使用后端返回的字段名
+                                        const fileName = att.filename || att.fileName || '';
+                                        const fileUrl = att.downloadUrl || att.fileUrl || '';
+                                        const attachmentId = att.attachmentId || att.id || 0;
+                                        const uploadedAt = att.createdAt || att.uploadedAt || '';
+                                        const sizeBytes = att.sizeBytes || 0;
+
+                                        const FileIcon = getFileIcon(fileName);
+                                        const isImage = fileName.match(/\.(jpg|jpeg|png|gif|webp|svg)$/i);
                                         return (
                                             <div
-                                                key={att.id}
+                                                key={attachmentId}
                                                 className="flex items-center gap-3 bg-white p-3 rounded-xl border border-slate-100 hover:border-blue-200 hover:shadow-md transition-all group"
                                             >
                                                 <div className="bg-blue-50 p-2 rounded-lg text-blue-500 group-hover:bg-blue-100 transition-colors shrink-0">
                                                     <FileIcon size={20} />
                                                 </div>
                                                 <div className="flex-1 min-w-0">
-                                                    <div className="text-sm font-bold text-slate-700 truncate" title={att.fileName}>{att.fileName}</div>
+                                                    <div className="text-sm font-bold text-slate-700 truncate" title={fileName}>{fileName}</div>
                                                     <div className="text-[10px] text-slate-400 flex items-center gap-2">
-                                                        <span>{att.uploadedAt}</span>
-                                                        {att.fileUrl && (
-                                                            <span className="text-blue-400">· {(att as any).sizeBytes ? formatFileSize((att as any).sizeBytes) : '未知大小'}</span>
+                                                        <span>{uploadedAt ? new Date(uploadedAt).toLocaleDateString() : ''}</span>
+                                                        {sizeBytes > 0 && (
+                                                            <span className="text-blue-400">· {formatFileSize(sizeBytes)}</span>
                                                         )}
                                                     </div>
                                                 </div>
@@ -766,7 +800,7 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ task, onClose,
                                                         </button>
                                                     )}
                                                     <a
-                                                        href={att.fileUrl}
+                                                        href={fileUrl}
                                                         target="_blank"
                                                         rel="noreferrer"
                                                         className="p-2 rounded-lg text-slate-400 hover:text-blue-500 hover:bg-blue-50 transition-colors"
@@ -775,7 +809,7 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ task, onClose,
                                                         <Download size={16} />
                                                     </a>
                                                     <button
-                                                        onClick={() => handleDeleteAttachment(att.id)}
+                                                        onClick={() => handleDeleteAttachment(attachmentId)}
                                                         className="p-2 rounded-lg text-slate-400 hover:text-red-500 hover:bg-red-50 transition-colors"
                                                         title="删除"
                                                     >
