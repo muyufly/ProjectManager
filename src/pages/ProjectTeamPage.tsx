@@ -1,17 +1,18 @@
 import React, { useContext, useState } from 'react';
 import { AppContext } from '../constants';
-import { LayoutGrid, Users as UsersIcon, FolderPlus, Plus, ArrowRight, ChevronDown, ChevronUp, Clock, ChevronRight, X, Trash2, LogOut, XCircle, ShieldAlert, UserMinus } from 'lucide-react';
+import { LayoutGrid, Users as UsersIcon, FolderPlus, Plus, ArrowRight, ChevronDown, ChevronUp, Clock, ChevronRight, X, Trash2, LogOut, XCircle, ShieldAlert, UserMinus, Pencil, UserPlus } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import type { Project, Team, Task } from '../types';
-import { TaskStatus } from '../types';
+import { TaskStatus, TaskPriority } from '../types';
 import { CreateTaskModal } from '../components/CreateTaskModal';
+import { EditTaskModal } from '../components/EditTaskModal';
+import { AssignTaskModal } from '../components/AssignTaskModal';
 import { CreateProjectModal } from '../components/CreateProjectModal';
 import { CreateTeamModal } from '../components/CreateTeamModal';
 import { TaskAPI, ProjectAPI, TeamAPI } from '../services/api';
 import { TaskDetailModal } from '../components/TaskDetailModal';
 import { InviteMemberModal } from '../components/InviteMemberModal';
 import { InviteProjectMemberModal } from '../components/InviteProjectMemberModal';
-import { UserPlus } from 'lucide-react';
 
 // Role Groups (Real backend data)
 interface RoleGroup {
@@ -33,12 +34,16 @@ export const ProjectTeamPage: React.FC = () => {
     const [isTeamModalOpen, setIsTeamModalOpen] = useState(false);
     const [activeProjectId, setActiveProjectId] = useState<number | null>(null);
     const [selectedTask, setSelectedTask] = useState<Task | null>(null);
+    const [editingTask, setEditingTask] = useState<Task | null>(null);
+    const [assigningTask, setAssigningTask] = useState<Task | null>(null);
     const [editMode, setEditMode] = useState<Record<number, boolean>>({});
     const [groupsByProject, setGroupsByProject] = useState<Record<number, RoleGroup[]>>({});
     const [isInviteModalOpen, setIsInviteModalOpen] = useState(false);
     const [inviteTeam, setInviteTeam] = useState<{ id: number, name: string } | null>(null);
     const [isProjectInviteModalOpen, setIsProjectInviteModalOpen] = useState(false);
     const [inviteProject, setInviteProject] = useState<{ id: number, name: string } | null>(null);
+
+    const isManager = state.currentUser?.role === '管理员' || state.currentUser?.role === 'MANAGER';
 
     // Use state data
     const displayProjects = state.projects;
@@ -299,8 +304,8 @@ export const ProjectTeamPage: React.FC = () => {
                                     const groups = getGroups(pId);
                                     const projectTasks = tasks.filter(t => t.projectId === pId);
                                     const sortedTasks = [...projectTasks].sort((a, b) => {
-                                        const dateA = a.completedAt || a.dueDate;
-                                        const dateB = b.completedAt || b.dueDate;
+                                        const dateA = a.completedAt || a.dueAt || a.dueDate || '';
+                                        const dateB = b.completedAt || b.dueAt || a.dueDate || '';
                                         return new Date(dateB).getTime() - new Date(dateA).getTime();
                                     });
 
@@ -481,15 +486,18 @@ export const ProjectTeamPage: React.FC = () => {
                                                             ) : (
                                                                 sortedTasks.map((task, index) => {
                                                                     const assignee = users.find(u => (u.userId || u.id) === task.assigneeId);
-                                                                    const date = task.completedAt || task.dueDate;
+                                                                    const date = task.completedAt || task.dueAt || task.dueDate || '';
                                                                     const dateObj = new Date(date);
-                                                                    const formattedDate = `${dateObj.getMonth() + 1}月${dateObj.getDate()}日`;
+                                                                    const formattedDate = date ? `${dateObj.getMonth() + 1}月${dateObj.getDate()}日` : '未设置';
 
                                                                     return (
                                                                         <div key={task.id} className="relative group">
                                                                             <div className="absolute -left-[41px] top-3 w-4 h-4 rounded-full border-2 border-white bg-slate-200 group-hover:bg-blue-500 transition-colors shadow-sm"></div>
 
-                                                                            <div className="bg-white p-4 rounded-2xl border border-slate-100 flex items-center justify-between gap-4">
+                                                                            <div
+                                                                                className="bg-white p-4 rounded-2xl border border-slate-100 flex items-center justify-between gap-4 cursor-pointer hover:border-blue-200 transition-all hover:shadow-md group/item"
+                                                                                onClick={() => setSelectedTask(task)}
+                                                                            >
                                                                                 <div className="flex items-center gap-4">
                                                                                     <div className="w-10 h-10 rounded-xl bg-slate-50 overflow-hidden border border-white shadow-sm">
                                                                                         <img src={assignee?.avatar || 'https://api.dicebear.com/7.x/avataaars/svg?seed=fallback'} alt="" className="w-full h-full object-cover" />
@@ -511,7 +519,33 @@ export const ProjectTeamPage: React.FC = () => {
                                                                                         </div>
                                                                                     </div>
                                                                                 </div>
-                                                                                <ChevronRight size={16} className="text-slate-300" />
+                                                                                <div className="flex items-center gap-3">
+                                                                                    {isManager && task.status !== TaskStatus.DONE && (
+                                                                                        <div className="flex items-center gap-1 opacity-0 group-hover/item:opacity-100 transition-opacity">
+                                                                                            <button
+                                                                                                onClick={(e) => {
+                                                                                                    e.stopPropagation();
+                                                                                                    setAssigningTask(task);
+                                                                                                }}
+                                                                                                className="p-2 text-slate-400 hover:text-blue-500 hover:bg-blue-50 rounded-xl transition-all"
+                                                                                                title="分配负责人"
+                                                                                            >
+                                                                                                <UserPlus size={16} />
+                                                                                            </button>
+                                                                                            <button
+                                                                                                onClick={(e) => {
+                                                                                                    e.stopPropagation();
+                                                                                                    setEditingTask(task);
+                                                                                                }}
+                                                                                                className="p-2 text-slate-400 hover:text-blue-500 hover:bg-blue-50 rounded-xl transition-all"
+                                                                                                title="编辑任务"
+                                                                                            >
+                                                                                                <Pencil size={16} />
+                                                                                            </button>
+                                                                                        </div>
+                                                                                    )}
+                                                                                    <ChevronRight size={16} className="text-slate-300" />
+                                                                                </div>
                                                                             </div>
                                                                         </div>
                                                                     );
@@ -725,6 +759,71 @@ export const ProjectTeamPage: React.FC = () => {
                 <TaskDetailModal
                     task={selectedTask}
                     onClose={() => setSelectedTask(null)}
+                />
+            )}
+
+            {editingTask && (
+                <EditTaskModal
+                    task={editingTask}
+                    onClose={() => setEditingTask(null)}
+                    onSubmit={async (data) => {
+                        try {
+                            const taskId = editingTask.id || editingTask.taskId || 0;
+                            await TaskAPI.edit({
+                                taskId: data.taskId,
+                                title: data.title,
+                                description: data.description,
+                                priority: data.priority,
+                                dueAt: data.dueAt,
+                                startAt: data.startAt,
+                                currentOwnerUserId: data.currentOwnerUserId || 0
+                            });
+
+                            setState(prev => ({
+                                ...prev,
+                                tasks: prev.tasks.map(t => (t.id === taskId || t.taskId === taskId) ? {
+                                    ...t,
+                                    title: data.title,
+                                    description: data.description,
+                                    priority: data.priority,
+                                    dueAt: data.dueAt,
+                                    dueDate: data.dueAt // Maintain both for safety
+                                } : t)
+                            }));
+                        } catch (e) {
+                            alert('更新任务失败');
+                        }
+                    }}
+                />
+            )}
+
+            {assigningTask && (
+                <AssignTaskModal
+                    task={assigningTask}
+                    users={users}
+                    onClose={() => setAssigningTask(null)}
+                    onSubmit={async (data) => {
+                        try {
+                            const taskId = assigningTask.id || assigningTask.taskId || 0;
+                            await TaskAPI.assign({
+                                taskId: data.taskId,
+                                projectId: data.projectId,
+                                userId: data.userId
+                            });
+
+                            const updated: Task = {
+                                ...assigningTask,
+                                assigneeId: data.userId
+                            };
+
+                            setState(prev => ({
+                                ...prev,
+                                tasks: prev.tasks.map(t => (t.id === taskId || t.taskId === taskId) ? updated : t)
+                            }));
+                        } catch (e) {
+                            alert('分配任务失败');
+                        }
+                    }}
                 />
             )}
 

@@ -117,12 +117,24 @@ const App: React.FC = () => {
                     const taskRes = await TaskAPI.list(pId);
                     // Handle both direct array response and { data: [...] } format
                     const taskItems = Array.isArray(taskRes) ? taskRes : (taskRes.data || taskRes.items || []);
-                    // Add projectId to each task (API doesn't include it)
-                    const tasksWithProjectId = taskItems.map((t: any) => ({
-                      ...t,
-                      id: t.taskId || t.id,
-                      projectId: pId
-                    }));
+                    // Add projectId and normalize fields for each task
+                    const tasksWithProjectId = taskItems.map((t: any) => {
+                      const taskId = t.taskId || t.id;
+                      const aId = t.assigneeId || t.assigneeUserId || t.currentOwnerUserId || (t.assignee && (t.assignee.userId || t.assignee.id)) || 0;
+
+                      return {
+                        ...t,
+                        id: taskId,
+                        taskId: taskId,
+                        projectId: pId,
+                        // Sync date fields (dueAt is full timestamp, dueDate is YYYY-MM-DD for UI/Calendar)
+                        dueAt: t.dueAt || t.dueDate,
+                        dueDate: (t.dueAt || t.dueDate || '').split('T')[0],
+                        startAt: t.startAt || t.startDate,
+                        // Sync assignee ID
+                        assigneeId: Number(aId)
+                      };
+                    });
                     if (tasksWithProjectId.length > 0) {
                       allTasks = [...allTasks, ...tasksWithProjectId];
                     }
