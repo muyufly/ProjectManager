@@ -90,7 +90,7 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ task, onClose,
         message: '',
         confirmText: '确认',
         cancelText: '取消',
-        onConfirm: () => {},
+        onConfirm: () => { },
         type: 'warning'
     });
 
@@ -104,17 +104,19 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ task, onClose,
             try {
                 const taskDetail = await TaskAPI.info(taskId);
                 if (taskDetail) {
-                    // Normalize refetched fields
+                    // Normalize refetched fields with robust field picking
                     setLocalTask(prev => {
-                        const dueDateRaw = taskDetail.dueAt || taskDetail.dueDate || prev.dueDate;
+                        const t = taskDetail;
+                        const aId = t.assigneeUserId || t.assigneeId || t.currentOwnerUserId || (t.assign && (t.assign.userId || t.assign.id)) || (t.assignee && (t.assignee.userId || t.assignee.id));
+
                         return {
                             ...prev,
-                            ...taskDetail,
-                            id: taskDetail.taskId || taskDetail.id || prev.id,
-                            dueDate: dueDateRaw ? dueDateRaw.split('T')[0] : undefined,
-                            dueAt: taskDetail.dueAt || taskDetail.dueDate || prev.dueAt,
-                            assigneeId: taskDetail.assigneeUserId || taskDetail.assigneeId || taskDetail.currentOwnerUserId || prev.assigneeId,
-                            attachments: taskDetail.attachments || prev.attachments || []
+                            ...t,
+                            id: Number(t.taskId || t.id || prev.id),
+                            dueDate: (t.dueAt || t.dueDate || prev.dueDate || '').split('T')[0],
+                            dueAt: t.dueAt || t.dueDate || prev.dueAt,
+                            assigneeId: aId ? Number(aId) : prev.assigneeId,
+                            attachments: t.attachments || prev.attachments || []
                         };
                     });
                 }
@@ -442,7 +444,34 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ task, onClose,
         setConfirmDialog(prev => ({ ...prev, isOpen: false }));
     };
 
+    const myId = Number(currentUser?.userId || currentUser?.id || 0);
+    const isGlobalManager = (currentUser?.role || '').toString().trim() === '管理员' ||
+        (currentUser?.role || '').toString().trim().toUpperCase() === 'MANAGER' ||
+        (currentUser?.role || '').toString().trim().toUpperCase() === 'ADMIN';
+
+    // 检查项目/团队管理员权限
+    const project = state.projects.find(p => (p.id === localTask.projectId) || (p.projectId === localTask.projectId));
+    const projectTeam = project ? state.teams.find(t => (t.teamId === project.teamId) || (t.id === project.teamId)) : null;
+    const isTeamAdmin = projectTeam && (
+        (projectTeam.adminIds || []).map(id => Number(id)).includes(myId) ||
+        Number(projectTeam.creatorId || projectTeam.ownerId) === myId
+    );
+
+    const hasAdminRights = isGlobalManager || isTeamAdmin;
+
     const handleStatusChange = async (newStatus: TaskStatus) => {
+        // 只有具备管理权限的人能操作
+        if (!hasAdminRights) {
+            showConfirmDialog(
+                '权限不足',
+                '只有管理员 (MANAGER) 可以修改任务状态。',
+                () => closeConfirmDialog(),
+                'warning',
+                '知道了'
+            );
+            return;
+        }
+
         // 校验状态流转是否合法
         if (!isValidTransition(localTask.status, newStatus)) {
             const hint = getTransitionHint(localTask.status);
@@ -507,6 +536,48 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ task, onClose,
                 'danger',
                 '知道了'
             );
+        }
+    };
+
+    // 申领项目 (领取任务)
+    const handleClaimTask = async () => {
+        setLoading(true);
+        try {
+            const taskId = localTask.id || localTask.taskId || 0;
+            await TaskAPI.claim({ taskId });
+
+            // 申领成功后，将状态改为 进行中，并将负责人设为当前用户
+            const updated: Task = {
+                ...localTask,
+                status: TaskStatus.IN_PROGRESS,
+                assigneeId: currentUser?.userId || currentUser?.id || 0
+            };
+
+            setLocalTask(updated);
+            setState(prev => ({
+                ...prev,
+                tasks: prev.tasks.map(t => (t.id === localTask.id || t.taskId === localTask.taskId) ? updated : t)
+            }));
+            onUpdate?.();
+
+            showConfirmDialog(
+                '领取成功',
+                '您已成功领取该任务，任务状态已变更为 "进行中"。',
+                () => closeConfirmDialog(),
+                'success',
+                '知道了'
+            );
+        } catch (e: any) {
+            console.error('Claim Error:', e);
+            showConfirmDialog(
+                '领取失败',
+                e.message || '领取任务失败，请稍后重试。',
+                () => closeConfirmDialog(),
+                'danger',
+                '知道了'
+            );
+        } finally {
+            setLoading(false);
         }
     };
 
@@ -616,11 +687,11 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ task, onClose,
                                     <button
                                         key={value}
                                         onClick={() => handleStatusChange(value)}
-                                        disabled={!isValid && !isCurrent}
-                                        title={!isValid && !isCurrent ? '当前状态不支持流转至此状态' : ''}
+                                        disabled={(!isValid && !isCurrent) || !hasAdminRights}
+                                        title={!hasAdminRights ? '只有管理员可以修改状态' : (!isValid && !isCurrent ? '当前状态不支持流转至此状态' : '')}
                                         className={`px-4 py-2 rounded-xl text-sm font-bold border transition-all ${isCurrent
                                             ? 'bg-blue-500 text-white border-blue-500 shadow-md shadow-blue-200'
-                                            : isValid
+                                            : isValid && hasAdminRights
                                                 ? 'bg-white text-slate-500 border-slate-200 hover:border-blue-300 hover:bg-blue-50/30'
                                                 : 'bg-slate-100 text-slate-300 border-slate-200 cursor-not-allowed'
                                             }`}
@@ -865,8 +936,8 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ task, onClose,
                                     'bg-amber-100 text-amber-600'
                                 }`}>
                                 {confirmDialog.type === 'success' ? <CheckCircle2 size={28} /> :
-                                 confirmDialog.type === 'danger' ? <AlertCircle size={28} /> :
-                                 <AlertCircle size={28} />}
+                                    confirmDialog.type === 'danger' ? <AlertCircle size={28} /> :
+                                        <AlertCircle size={28} />}
                             </div>
                             <h3 className="text-xl font-black text-slate-800">{confirmDialog.title}</h3>
                         </div>
