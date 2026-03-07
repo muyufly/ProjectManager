@@ -78,8 +78,8 @@ export const TasksPage: React.FC = () => {
         // 使用当前状态值进行筛选
         const filteredTasks = filterTasks(projectTasks, taskFilter, searchQuery);
         const sortedTasks = [...filteredTasks].sort((a, b) => {
-            const dateA = a.completedAt || a.dueDate;
-            const dateB = b.completedAt || b.dueDate;
+            const dateA = a.completedAt || a.dueDate || new Date().toISOString();
+            const dateB = b.completedAt || b.dueDate || new Date().toISOString();
             return new Date(dateB).getTime() - new Date(dateA).getTime();
         });
 
@@ -178,7 +178,7 @@ export const TasksPage: React.FC = () => {
                             ) : (
                                 sortedTasks.map((task, index) => {
                                     const assignee = users.find(u => (u.userId || u.id) === task.assigneeId);
-                                    const date = task.completedAt || task.dueDate;
+                                    const date = task.completedAt || task.dueDate || new Date().toISOString();
                                     const dateObj = new Date(date);
                                     const formattedDate = `${dateObj.getMonth() + 1}月${dateObj.getDate()}日`;
                                     const isLatest = index === 0;
