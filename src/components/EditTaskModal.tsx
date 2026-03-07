@@ -20,22 +20,34 @@ export const EditTaskModal: React.FC<EditTaskModalProps> = ({ task, onClose, onS
     const [title, setTitle] = useState(task.title);
     const [description, setDescription] = useState(task.description || '');
     const [priority, setPriority] = useState<TaskPriority>(task.priority);
+    const stripTime = (dateStr?: string) => {
+        if (!dateStr) return '';
+        return dateStr.split('T')[0];
+    };
     // 兼容后端返回的两种字段名
-    const [dueAt, setDueAt] = useState(task.dueAt || task.dueDate || '');
-    const [startAt, setStartAt] = useState(task.startAt || '');
+    const [dueAt, setDueAt] = useState(stripTime(task.dueAt || task.dueDate));
+    const [startAt, setStartAt] = useState(stripTime(task.startAt));
     const [loading, setLoading] = useState(false);
-
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         setLoading(true);
+
+        // 格式化日期为 2026-03-25T00:00:00.000000Z
+        const formatDate = (dateStr: string) => {
+            if (!dateStr) return '';
+            // 如果已经是长格式则不处理
+            if (dateStr.includes('T')) return dateStr;
+            return `${dateStr}T00:00:00.000000Z`;
+        };
+
         try {
             await onSubmit({
                 taskId: task.id || task.taskId || 0,
                 title,
                 description,
                 priority,
-                dueAt,
-                startAt,
+                dueAt: formatDate(dueAt),
+                startAt: formatDate(startAt),
                 currentOwnerUserId: task.assigneeId
             });
             onClose();
