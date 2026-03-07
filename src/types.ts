@@ -36,11 +36,18 @@ export interface User {
   jobTitle?: string;
 }
 
+// 评论接口 - 匹配后端返回的数据结构
 export interface Comment {
-  id: number;
-  userId: number;
+  commentId: number;
+  taskId: number;
+  authorUserId: number;
+  authorUsername: string;
   content: string;
   createdAt: string;
+  updatedAt?: string;
+  // 前端兼容字段
+  id?: number;
+  userId?: number;
 }
 
 export interface Attachment {

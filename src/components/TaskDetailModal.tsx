@@ -69,6 +69,11 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ task, onClose,
     const [previewAttachment, setPreviewAttachment] = useState<Attachment | null>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
 
+    // 当 task prop 变化时，同步更新 localTask
+    useEffect(() => {
+        setLocalTask(task);
+    }, [task]);
+
     // 确认弹窗状态
     const [confirmDialog, setConfirmDialog] = useState<{
         isOpen: boolean;
@@ -90,17 +95,20 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ task, onClose,
 
     const assignee = users.find(u => u.id === localTask.assigneeId || u.userId === localTask.assigneeId);
 
+    // 当 localTask 变化时，重新获取评论列表
     useEffect(() => {
         const fetchComments = async () => {
+            const taskId = localTask.id || localTask.taskId || 0;
+            if (!taskId) return;
             try {
-                const res = await CommentAPI.list(localTask.id || localTask.taskId || 0);
-                setComments(res.items || []);
+                const commentsData = await CommentAPI.list(taskId);
+                setComments(commentsData);
             } catch (e) {
                 console.error('Failed to fetch comments', e);
             }
         };
         fetchComments();
-    }, [localTask.id, localTask.taskId]);
+    }, [localTask]);
 
     // 计算文件的 SHA256 校验和
     const calculateSHA256 = async (file: File): Promise<string> => {
@@ -338,17 +346,16 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ task, onClose,
         if (!newComment.trim()) return;
         setLoading(true);
         try {
+            // 请求体: { taskId, projectId, content }
             const commentId = await CommentAPI.create({
                 taskId: localTask.id || localTask.taskId || 0,
+                projectId: localTask.projectId || 0,
                 content: newComment
             });
-            const comment: Comment = {
-                id: commentId,
-                userId: currentUser?.userId || 0,
-                content: newComment,
-                createdAt: new Date().toISOString()
-            };
-            setComments(prev => [comment, ...prev]);
+            // 创建成功后重新获取评论列表，确保数据格式一致
+            const taskId = localTask.id || localTask.taskId || 0;
+            const commentsData = await CommentAPI.list(taskId);
+            setComments(commentsData);
             setNewComment('');
         } catch (e) {
             alert('评论失败');
@@ -586,7 +593,7 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ task, onClose,
                 </div>
 
                 {/* Right Side: Interaction */}
-                <div className="w-full md:w-[380px] bg-slate-50 h-full flex flex-col">
+                <div className="w-full md:w-[380px] bg-slate-50 flex flex-col max-h-[500px]">
                     <div className="hidden md:flex justify-end p-4">
                         <button onClick={onClose} className="text-slate-400 hover:text-slate-600 transition-colors bg-white p-2 rounded-full shadow-sm">
                             <X size={20} />
@@ -610,34 +617,60 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ task, onClose,
                     </div>
 
                     {/* Tab Content */}
-                    <div className="flex-1 overflow-y-auto p-6">
+                    <div className="flex-1 flex flex-col overflow-hidden">
                         {activeTab === 'comments' ? (
-                            <div className="space-y-6">
-                                {comments.length === 0 ? (
-                                    <div className="text-center py-10">
-                                        <div className="bg-white w-12 h-12 rounded-full flex items-center justify-center mx-auto mb-3 shadow-sm text-slate-300">
-                                            <MessageSquare size={24} />
-                                        </div>
-                                        <p className="text-slate-400 text-sm">暂无评论，说点什么吧...</p>
-                                    </div>
-                                ) : (
-                                    comments.map(c => {
-                                        const commenter = users.find(u => u.id === c.userId || u.userId === c.userId);
-                                        return (
-                                            <div key={c.id} className="group">
-                                                <div className="flex items-center gap-2 mb-1.5">
-                                                    <img src={commenter?.avatar} className="w-5 h-5 rounded-full" alt="" />
-                                                    <span className="text-xs font-bold text-slate-700">{commenter?.name || '未知用户'}</span>
-                                                    <span className="text-[10px] text-slate-400 ml-auto">{new Date(c.createdAt).toLocaleDateString()}</span>
+                            <>
+                                {/* 评论列表 - 可滚动区域 */}
+                                <div className="flex-1 overflow-y-auto p-6">
+                                    <div className="space-y-6">
+                                        {comments.length === 0 ? (
+                                            <div className="text-center py-10">
+                                                <div className="bg-white w-12 h-12 rounded-full flex items-center justify-center mx-auto mb-3 shadow-sm text-slate-300">
+                                                    <MessageSquare size={24} />
                                                 </div>
-                                                <div className="bg-white p-3 rounded-2xl rounded-tl-none shadow-sm border border-slate-100 text-sm text-slate-600">
-                                                    {c.content}
-                                                </div>
+                                                <p className="text-slate-400 text-sm">暂无评论，说点什么吧...</p>
                                             </div>
-                                        );
-                                    })
-                                )}
-                            </div>
+                                        ) : (
+                                            comments.map(c => {
+                                                // 使用后端返回的 authorUserId 和 authorUsername
+                                                const commenter = users.find(u => u.id === c.authorUserId || u.userId === c.authorUserId);
+                                                return (
+                                                    <div key={c.commentId} className="group">
+                                                        <div className="flex items-center gap-2 mb-1.5">
+                                                            <img src={commenter?.avatar} className="w-5 h-5 rounded-full" alt="" />
+                                                            <span className="text-xs font-bold text-slate-700">{c.authorUsername || commenter?.name || '未知用户'}</span>
+                                                            <span className="text-[10px] text-slate-400 ml-auto">{new Date(c.createdAt).toLocaleDateString()}</span>
+                                                        </div>
+                                                        <div className="bg-white p-3 rounded-2xl rounded-tl-none shadow-sm border border-slate-100 text-sm text-slate-600">
+                                                            {c.content}
+                                                        </div>
+                                                    </div>
+                                                );
+                                            })
+                                        )}
+                                    </div>
+                                </div>
+
+                                {/* Footer Input for Comments - 固定在底部 */}
+                                <div className="p-6 bg-white border-t border-slate-100 shrink-0">
+                                    <form onSubmit={handleAddComment} className="relative">
+                                        <textarea
+                                            value={newComment}
+                                            onChange={e => setNewComment(e.target.value)}
+                                            placeholder="输入评论..."
+                                            rows={2}
+                                            className="w-full pl-4 pr-12 py-3 bg-slate-50 rounded-2xl border border-slate-200 focus:border-blue-500 focus:ring-4 focus:ring-blue-100 outline-none transition-all text-sm resize-none"
+                                        />
+                                        <button
+                                            type="submit"
+                                            disabled={loading || !newComment.trim()}
+                                            className="absolute right-2 bottom-2 p-2 bg-blue-500 text-white rounded-xl shadow-lg shadow-blue-200 hover:bg-blue-600 disabled:bg-slate-300 disabled:shadow-none transition-all"
+                                        >
+                                            <Send size={18} />
+                                        </button>
+                                    </form>
+                                </div>
+                            </>
                         ) : (
                             <div className="space-y-4">
                                 {(!localTask.attachments || localTask.attachments.length === 0) ? (
@@ -744,28 +777,6 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ task, onClose,
                             </div>
                         )}
                     </div>
-
-                    {/* Footer Input for Comments */}
-                    {activeTab === 'comments' && (
-                        <div className="p-6 bg-white border-t border-slate-100">
-                            <form onSubmit={handleAddComment} className="relative">
-                                <textarea
-                                    value={newComment}
-                                    onChange={e => setNewComment(e.target.value)}
-                                    placeholder="输入评论..."
-                                    rows={2}
-                                    className="w-full pl-4 pr-12 py-3 bg-slate-50 rounded-2xl border border-slate-200 focus:border-blue-500 focus:ring-4 focus:ring-blue-100 outline-none transition-all text-sm resize-none"
-                                />
-                                <button
-                                    type="submit"
-                                    disabled={loading || !newComment.trim()}
-                                    className="absolute right-2 bottom-2 p-2 bg-blue-500 text-white rounded-xl shadow-lg shadow-blue-200 hover:bg-blue-600 disabled:bg-slate-300 disabled:shadow-none transition-all"
-                                >
-                                    <Send size={18} />
-                                </button>
-                            </form>
-                        </div>
-                    )}
                 </div>
             </div>
 

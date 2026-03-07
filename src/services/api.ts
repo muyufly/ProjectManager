@@ -267,7 +267,8 @@ export const TaskAPI = {
  * Comment API
  */
 export const CommentAPI = {
-  create: (data: { taskId: number; content: string }) =>
+  // 创建评论，请求体: { taskId, projectId, content }
+  create: (data: { taskId: number; projectId: number; content: string }) =>
     request<number>('/comment/create', { method: 'POST', body: JSON.stringify(data) }),
 
   edit: (data: { commentId: number; content: string }) =>
