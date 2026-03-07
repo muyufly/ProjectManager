@@ -15,7 +15,7 @@ export const Dashboard: React.FC = () => {
     const [isTeamModalOpen, setIsTeamModalOpen] = useState(false);
     const navigate = useNavigate();
 
-    const handleCreateProject = async (data: { name: string; description: string; deadline: string; teamId: number }) => {
+    const handleCreateProject = async (data: { name: string; description: string; teamId: number }) => {
         try {
             const projectId = await ProjectAPI.create(data);
             const newProject: Project = {
@@ -23,7 +23,7 @@ export const Dashboard: React.FC = () => {
                 projectId: projectId,
                 name: data.name,
                 description: data.description,
-                deadline: data.deadline,
+                deadline: '2026-12-31', // Default deadline or omitted
                 teamId: data.teamId,
                 status: 'Active',
                 memberIds: [state.currentUser?.userId || 0],
@@ -43,7 +43,7 @@ export const Dashboard: React.FC = () => {
 
             // Immediately fetch actual members to sync state with backend
             const membersRes = await TeamAPI.members(teamId);
-            const actualMembers = membersRes.data || [];
+            const actualMembers = Array.isArray(membersRes) ? membersRes : [];
             const memberIds = actualMembers.map((m: any) => m.userId || m.id);
             const adminIds = actualMembers
                 .filter((m: any) => m.teamRole === 'CREATOR' || m.teamRole === 'ADMIN')
@@ -191,23 +191,22 @@ export const Dashboard: React.FC = () => {
 
                         <div className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden h-full max-h-[600px] flex flex-col">
                             <div className="p-6 flex-1 overflow-y-auto space-y-6 scrollbar-thin scrollbar-thumb-slate-100">
-                                {announcements.length === 0 ? (
-                                    <div className="text-center py-8 text-slate-400 text-sm italic">暂无通知</div>
+                                {announcements.filter(a => !a.isRead).length === 0 ? (
+                                    <div className="text-center py-8 text-slate-400 text-sm italic">暂无未读通知</div>
                                 ) : (
-                                    announcements.map(a => (
+                                    announcements.filter(a => !a.isRead).map(a => (
                                         <div
                                             key={a.id}
-                                            className={`group cursor-pointer p-2 rounded-2xl transition-all ${!a.isRead ? 'bg-blue-50/50' : 'hover:bg-slate-50'}`}
+                                            className="group cursor-pointer p-2 rounded-2xl transition-all bg-blue-50/50"
                                             onClick={() => {
-                                                if (!a.isRead) handleMarkAsRead(a.id);
+                                                handleMarkAsRead(a.id);
 
                                                 // Extract invite token if present in content (common for team invites)
-                                                // Handles both URL query style and text labels
-                                                const tokenMatch = a.content?.match(/token=([^&\s]+)/) || a.content?.match(/Token:?\s*([a-zA-Z0-9._-]+)/i);
+                                                const content = a.body || a.content;
+                                                const tokenMatch = content?.match(/token=([^&\s]+)/) || content?.match(/Token:?\s*([a-zA-Z0-9._-]+)/i);
                                                 const token = tokenMatch ? tokenMatch[1] : null;
 
                                                 if (token) {
-                                                    // Navigate to local invite acceptance handler
                                                     navigate(`/accept-invite/${token}`);
                                                 } else {
                                                     navigate(`/announcement/${a.id}`);
@@ -216,13 +215,15 @@ export const Dashboard: React.FC = () => {
                                         >
                                             <div className="flex items-center justify-between mb-2">
                                                 <div className="flex items-center gap-2">
-                                                    <span className={`w-2 h-2 rounded-full shrink-0 ${!a.isRead ? 'bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.6)]' : 'bg-slate-300'}`}></span>
-                                                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{a.time || a.date}</span>
+                                                    <span className="w-2 h-2 rounded-full shrink-0 bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.6)]"></span>
+                                                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+                                                        {a.createdAt ? new Date(a.createdAt).toLocaleString('zh-CN', { hour: '2-digit', minute: '2-digit' }) : (a.time || a.date)}
+                                                    </span>
                                                 </div>
-                                                {!a.isRead && <span className="text-[8px] font-black text-blue-500 uppercase tracking-tighter">NEW</span>}
+                                                <span className="text-[8px] font-black text-blue-500 uppercase tracking-tighter">NEW</span>
                                             </div>
-                                            <h4 className={`font-bold group-hover:text-blue-500 transition-colors line-clamp-1 ${!a.isRead ? 'text-slate-900' : 'text-slate-600'}`}>{a.title}</h4>
-                                            <p className="text-xs text-slate-500 line-clamp-2 mt-1">{a.content}</p>
+                                            <h4 className="font-bold group-hover:text-blue-500 transition-colors line-clamp-1 text-slate-900">{a.title}</h4>
+                                            <p className="text-xs text-slate-500 line-clamp-2 mt-1">{a.body || a.content}</p>
                                         </div>
                                     ))
                                 )}
