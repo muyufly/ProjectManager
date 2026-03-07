@@ -201,13 +201,33 @@ const App: React.FC = () => {
           time: n.createdAt.split('T')[1]?.substring(0, 5) || ''
         }));
 
+        // Final de-duplicate for allUsers to prevent UI warnings
+        const userMap = new Map();
+        allUsers.forEach(u => {
+          const id = Number(u.userId || u.id || 0);
+          if (id > 0) {
+            userMap.set(id, { ...(userMap.get(id) || {}), ...u, id, userId: id });
+          }
+        });
+        const finalUsers = Array.from(userMap.values());
+
+        // Final de-duplicate for allTasks
+        const taskMap = new Map();
+        allTasks.forEach(t => {
+          const id = Number(t.taskId || t.id || 0);
+          if (id > 0) {
+            taskMap.set(id, { ...(taskMap.get(id) || {}), ...t, id, taskId: id });
+          }
+        });
+        const finalTasks = Array.from(taskMap.values());
+
         setState(prev => ({
           ...prev,
           currentUser: user,
           teams: teams,
           projects: projects,
-          tasks: allTasks,
-          users: allUsers,
+          tasks: finalTasks,
+          users: finalUsers,
           notifications: notifications,
           announcements: announcements,
           availableProjects: projects

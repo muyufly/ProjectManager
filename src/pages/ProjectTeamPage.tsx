@@ -43,7 +43,8 @@ export const ProjectTeamPage: React.FC = () => {
     const [isProjectInviteModalOpen, setIsProjectInviteModalOpen] = useState(false);
     const [inviteProject, setInviteProject] = useState<{ id: number, name: string } | null>(null);
 
-    const isManager = state.currentUser?.role === '管理员' || state.currentUser?.role === 'MANAGER';
+    const isGlobalManager = state.currentUser?.role === '管理员' || state.currentUser?.role === 'MANAGER';
+    const myId = Number(state.currentUser?.userId || state.currentUser?.id || 0);
 
     // Use state data
     const displayProjects = state.projects;
@@ -299,6 +300,11 @@ export const ProjectTeamPage: React.FC = () => {
                             <div className="flex flex-col gap-6">
                                 {displayProjects.map(project => {
                                     const pId = project.projectId || project.id;
+                                    const projectTeam = teams.find(t => (t.teamId || t.id) === project.teamId);
+                                    const adminIds = (projectTeam?.adminIds || []).map(id => Number(id));
+                                    const ownerId = Number(projectTeam?.creatorId || projectTeam?.ownerId || 0);
+                                    const hasProjectAdminRights = isGlobalManager || (myId > 0 && (adminIds.includes(myId) || ownerId === myId));
+
                                     const isExpanded = expandedProjects[pId];
                                     const canEdit = !!editMode[pId];
                                     const groups = getGroups(pId);
@@ -344,31 +350,32 @@ export const ProjectTeamPage: React.FC = () => {
                                             {/* Expanded Content */}
                                             {isExpanded && (
                                                 <div className="px-8 pb-8 animate-in fade-in slide-in-from-top-4 duration-300 border-t border-slate-50">
-                                                    <div className="flex justify-end items-center gap-3 py-6 flex-wrap">
-                                                        <div className="flex items-center gap-3">
-                                                            <button
-                                                                onClick={() => toggleEdit(pId)}
-                                                                className={`px-4 py-2 rounded-xl text-sm font-bold border transition-all ${canEdit ? 'bg-emerald-50 text-emerald-600 border-emerald-200' : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'}`}
-                                                            >
-                                                                {canEdit ? '完成' : '编辑分工'}
-                                                            </button>
-                                                            {canEdit && (
+                                                    {hasProjectAdminRights && (
+                                                        <div className="flex justify-end items-center gap-3 py-6 flex-wrap">
+                                                            <div className="flex items-center gap-3">
                                                                 <button
-                                                                    onClick={() => handleAddGroup(pId)}
-                                                                    className="px-4 py-2 bg-white text-blue-600 font-bold rounded-xl border border-blue-200 hover:bg-blue-50 transition-all text-sm"
+                                                                    onClick={() => toggleEdit(pId)}
+                                                                    className={`px-4 py-2 rounded-xl text-sm font-bold border transition-all ${canEdit ? 'bg-emerald-50 text-emerald-600 border-emerald-200' : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'}`}
                                                                 >
-                                                                    添加小组
+                                                                    {canEdit ? '完成' : '编辑分工'}
                                                                 </button>
-                                                            )}
+                                                                {canEdit && (
+                                                                    <button
+                                                                        onClick={() => handleAddGroup(pId)}
+                                                                        className="px-4 py-2 bg-white text-blue-600 font-bold rounded-xl border border-blue-200 hover:bg-blue-50 transition-all text-sm"
+                                                                    >
+                                                                        添加小组
+                                                                    </button>
+                                                                )}
+                                                            </div>
+                                                            <button
+                                                                onClick={(e) => handleCreateTask(pId, e)}
+                                                                className="px-4 py-2 bg-blue-500 text-white font-bold rounded-xl shadow-lg shadow-blue-100 hover:bg-blue-600 transition-all flex items-center gap-2 text-sm"
+                                                            >
+                                                                <Plus size={18} /> 发布任务
+                                                            </button>
                                                         </div>
-                                                        <button
-                                                            onClick={(e) => handleCreateTask(pId, e)}
-                                                            className="px-4 py-2 bg-blue-500 text-white font-bold rounded-xl shadow-lg shadow-blue-100 hover:bg-blue-600 transition-all flex items-center gap-2 text-sm"
-                                                        >
-                                                            <Plus size={18} /> 发布任务
-                                                        </button>
-                                                    </div>
-
+                                                    )}
                                                     {/* Project Members Section */}
                                                     <div className="mb-8 text-left">
                                                         <h4 className="text-lg font-black text-slate-800 mb-4 flex items-center gap-2">
@@ -377,7 +384,7 @@ export const ProjectTeamPage: React.FC = () => {
                                                         </h4>
                                                         <div className="bg-slate-50/50 rounded-2xl p-6 border border-slate-100">
                                                             <div className="flex flex-wrap gap-4">
-                                                                {(project as any).memberIds?.map((mId: number) => {
+                                                                {project.memberIds?.map((mId: number) => {
                                                                     const u = resolveUser(mId);
                                                                     if (!u) return null;
                                                                     return (
@@ -387,16 +394,18 @@ export const ProjectTeamPage: React.FC = () => {
                                                                         </div>
                                                                     );
                                                                 })}
-                                                                <button
-                                                                    onClick={() => {
-                                                                        setInviteProject({ id: pId, name: project.name });
-                                                                        setIsProjectInviteModalOpen(true);
-                                                                    }}
-                                                                    className="flex items-center gap-2 bg-blue-50 px-3 py-2 rounded-xl border border-dashed border-blue-200 text-blue-600 hover:bg-blue-100 transition-all text-sm font-bold"
-                                                                >
-                                                                    <UserPlus size={16} />
-                                                                    邀请成员
-                                                                </button>
+                                                                {hasProjectAdminRights && (
+                                                                    <button
+                                                                        onClick={() => {
+                                                                            setInviteProject({ id: pId, name: project.name });
+                                                                            setIsProjectInviteModalOpen(true);
+                                                                        }}
+                                                                        className="flex items-center gap-2 bg-blue-50 px-3 py-2 rounded-xl border border-dashed border-blue-200 text-blue-600 hover:bg-blue-100 transition-all text-sm font-bold"
+                                                                    >
+                                                                        <UserPlus size={16} />
+                                                                        邀请成员
+                                                                    </button>
+                                                                )}
                                                             </div>
                                                         </div>
                                                     </div>
@@ -520,7 +529,7 @@ export const ProjectTeamPage: React.FC = () => {
                                                                                     </div>
                                                                                 </div>
                                                                                 <div className="flex items-center gap-3">
-                                                                                    {isManager && task.status !== TaskStatus.DONE && (
+                                                                                    {hasProjectAdminRights && task.status !== TaskStatus.DONE && (
                                                                                         <div className="flex items-center gap-1 opacity-0 group-hover/item:opacity-100 transition-opacity">
                                                                                             <button
                                                                                                 onClick={(e) => {
@@ -583,7 +592,7 @@ export const ProjectTeamPage: React.FC = () => {
                                     const ownerId = Number(team.creatorId || team.ownerId || 0);
                                     const adminIds = (team.adminIds || []).map(id => Number(id));
                                     const memberIds = (team.memberIds || []).map(id => Number(id));
-                                    const isTeamAdmin = (myId > 0) && (adminIds.includes(myId) || (ownerId === myId));
+                                    const isTeamAdmin = (myId > 0) && (adminIds.includes(myId) || (ownerId === myId) || isGlobalManager);
 
                                     return (
                                         <div key={team.id} className={`bg-white rounded-[2rem] border transition-all duration-300 overflow-hidden ${isExpanded ? 'shadow-xl border-indigo-200 ring-1 ring-indigo-100' : 'shadow-sm border-slate-100 hover:shadow-md'}`}>

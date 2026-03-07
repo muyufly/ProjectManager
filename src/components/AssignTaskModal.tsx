@@ -14,7 +14,14 @@ export const AssignTaskModal: React.FC<AssignTaskModalProps> = ({ task, users, o
     const [selectedUserId, setSelectedUserId] = useState<number | null>(task.assigneeId || null);
     const [loading, setLoading] = useState(false);
 
-    const filteredUsers = users.filter(u =>
+    const uniqueUsersSet = new Map();
+    users.forEach(u => {
+        const id = Number(u.userId || u.id);
+        if (id > 0) uniqueUsersSet.set(id, u);
+    });
+    const uniqueUsers = Array.from(uniqueUsersSet.values());
+
+    const filteredUsers = uniqueUsers.filter(u =>
         u.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
         u.username.toLowerCase().includes(searchQuery.toLowerCase())
     );
